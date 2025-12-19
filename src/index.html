@@ -216,6 +216,7 @@
           rouletteCandidates: [],
           menuSelectedRecipes: [],
           isMenuGenerated: false,
+          currentScale: 1,
 
           // 表單資料
           bottleForm: {
@@ -2818,6 +2819,124 @@
             return Array.from(tags).sort();
           },
 
+          // ABV Map for calculation
+          abvMap: {
+            gin: 40,
+            vodka: 40,
+            rum: 40,
+            tequila: 40,
+            whiskey: 40,
+            brandy: 40,
+            pisco: 40,
+            rum_dark: 40,
+            rum_151: 75.5,
+            whiskey_peat: 40,
+            sloe_gin: 26,
+            vermouth_dry: 18,
+            vermouth_sweet: 16,
+            lillet_blanc: 17,
+            campari: 25,
+            aperol: 11,
+            orange_liqueur: 40,
+            kahlua: 20,
+            baileys: 17,
+            liqueur_cherry: 24,
+            liqueur_benedictine: 40,
+            liqueur_violet: 22,
+            liqueur_maraschino: 32,
+            absinthe: 70,
+            liqueur_peach: 18,
+            liqueur_cassis: 16,
+            liqueur_cacao: 25,
+            liqueur_mint: 24,
+            liqueur_amaretto: 28,
+            liqueur_apricot: 24,
+            liqueur_drambuie: 40,
+            sparkling_wine: 12,
+          },
+
+          getIngredientABV(id) {
+            return this.abvMap[id] || 0;
+          },
+
+          parseVolume(amount, id) {
+            if (!amount) return 0;
+            let str = amount.toString().toLowerCase();
+            // Handle ml
+            const mlMatch = str.match(/(\d+(\.\d+)?)\s*ml/);
+            if (mlMatch) return parseFloat(mlMatch[1]);
+
+            // Handle oz
+            const ozMatch = str.match(/(\d+(\.\d+)?)\s*oz/);
+            if (ozMatch) return parseFloat(ozMatch[1]) * 30;
+
+            // Special keywords
+            if (str.includes("補滿")) return 120;
+            if (str.includes("適量") || str.includes("少許")) return 2;
+            if (str.includes("dash") || str.includes("滴")) return 1;
+            if (str.includes("tsp") || str.includes("茶匙")) return 5;
+
+            // Fruit/Veg counts
+            if (
+              str.includes("個") ||
+              str.includes("顆") ||
+              str.includes("片")
+            ) {
+              if (id.includes("juice") || id === "lemon" || id === "lime")
+                return 30;
+              return 0;
+            }
+
+            return 0;
+          },
+
+          calculateRecipeABV(recipe) {
+            if (!recipe || !recipe.ingredients) return 0;
+            let totalVol = 0;
+            let totalAlc = 0;
+
+            recipe.ingredients.forEach((ing) => {
+              const vol = this.parseVolume(ing.amount, ing.id);
+              const abv = this.getIngredientABV(ing.id);
+              totalVol += vol;
+              totalAlc += vol * (abv / 100);
+            });
+
+            if (totalVol === 0) return 0;
+            return Math.round((totalAlc / totalVol) * 100);
+          },
+
+          get selectableRecipes() {
+            return this.filteredRecipes.map((r) => {
+              let missing = (r.ingredients || [])
+                .filter((ing) => !this.myIngredients.includes(ing.id))
+                .map((ing) => ing.id);
+              return { ...r, missing };
+            });
+          },
+
+          getScaledAmount(amount) {
+            if (!amount) return "";
+            if (this.currentScale === 1) return this.convertAmount(amount);
+
+            // 自動辨識並乘算字串中的數字
+            let scaled = amount.replace(/(\d+(\.\d+)?)/g, (match) => {
+              const num = parseFloat(match);
+              if (isNaN(num)) return match;
+              let newNum = num * this.currentScale;
+              // 避免出現過多小數位
+              return parseFloat(newNum.toFixed(1));
+            });
+
+            return this.convertAmount(scaled);
+          },
+
+          openRecipeDetail(recipe) {
+            this.selectedRecipe = recipe;
+            this.currentScale = 1;
+            this.isRecipeModalOpen = true;
+          },
+
           get filteredRecipes() {
             let result = this.recipes;
 
@@ -2924,7 +3043,7 @@
           convertAmount(amount) {
             if (this.unit === "ml") return amount;
             if (!amount) return "";
-            return amount.replace(/(\d+)\s*ml/gi, (match, p1) => {
+            return amount.replace(/(\d+(\.\d+)?)\s*ml/gi, (match, p1) => {
               const ml = parseFloat(p1);
               const oz = Math.round((ml / 30) * 100) / 100;
               return oz + " oz";
@@ -3257,8 +3376,7 @@
             if (this.recipes.length === 0) return;
             const randomRecipe =
               this.recipes[Math.floor(Math.random() * this.recipes.length)];
-            this.selectedRecipe = randomRecipe;
-            this.isRecipeModalOpen = true;
+            this.openRecipeDetail(randomRecipe);
             this.rouletteResult = null; // 清除輪盤結果，下次進來是新的
           },
 
@@ -5248,7 +5366,7 @@
                           </div>
                         </div>
                         <button
-                          @click="selectedRecipe = recipe; isRecipeModalOpen = true"
+                          @click="openRecipeDetail(recipe)"
                           class="mt-6 w-full py-3 rounded-2xl font-black text-sm transition bg-slate-900 dark:bg-amber-500 dark:text-slate-900 text-white hover:bg-slate-800"
                         >
                           查看詳細步驟
@@ -5309,7 +5427,7 @@
                           </div>
                         </div>
                         <button
-                          @click="selectedRecipe = recipe; isRecipeModalOpen = true"
+                          @click="openRecipeDetail(recipe)"
                           class="mt-6 w-full py-3 rounded-2xl font-black text-sm transition bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
                         >
                           查看詳細步驟
@@ -5369,7 +5487,7 @@
                           </div>
                         </div>
                         <button
-                          @click="selectedRecipe = recipe; isRecipeModalOpen = true"
+                          @click="openRecipeDetail(recipe)"
                           class="mt-6 w-full py-3 rounded-2xl font-black text-sm transition bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
                         >
                           查看詳細步驟
@@ -5711,44 +5829,57 @@
               </div>
 
               <div
-                x-show="getReadyRecipes().length === 0"
+                x-show="recipes.length === 0"
                 class="text-center py-20 mt-8 bg-white dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800"
               >
                 <i
-                  data-lucide="clipboard-x"
+                  data-lucide="book-x"
                   class="w-16 h-16 mx-auto text-slate-300 dark:text-slate-700 mb-6"
                 ></i>
                 <h3 class="text-2xl font-black text-slate-400">
-                  沒有可調製的酒譜
+                  您的酒譜庫是空的
                 </h3>
                 <p class="text-slate-500 mt-2">
-                  請先到「吧檯」頁面，確認您擁有的材料。
+                  請先到「酒譜庫」新增或匯入酒譜。
                 </p>
                 <button
-                  @click="activeTab = 'bar'"
+                  @click="activeTab = 'recipes'"
                   class="text-amber-600 font-black hover:underline mt-4"
                 >
-                  前往我的吧檯
+                  前往酒譜庫
                 </button>
               </div>
 
               <div
-                x-show="getReadyRecipes().length > 0"
+                x-show="recipes.length > 0"
                 class="mt-8 grid md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
-                <template x-for="recipe in getReadyRecipes()" :key="recipe.id">
+                <template x-for="recipe in selectableRecipes" :key="recipe.id">
                   <label
-                    class="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border-2 transition-all cursor-pointer"
-                    :class="menuSelectedRecipes.includes(recipe.id) ? 'border-amber-500 ring-4 ring-amber-500/20' : 'border-slate-200 dark:border-slate-800'"
+                    class="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border-2 transition-all cursor-pointer relative"
+                    :class="menuSelectedRecipes.includes(recipe.id) ? 'border-amber-500 ring-4 ring-amber-500/20' : (recipe.missing.length === 0 ? 'border-green-300 dark:border-green-800' : 'border-slate-200 dark:border-slate-800')"
                   >
+                    <div
+                      x-show="recipe.missing.length > 0"
+                      class="absolute top-4 right-4 text-xs font-bold px-2 py-1 rounded-full"
+                      :class="recipe.missing.length === 1 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'"
+                      x-text="`缺 ${recipe.missing.length}`"
+                    ></div>
+                    <div
+                      x-show="recipe.missing.length === 0"
+                      class="absolute top-4 right-4 text-xs font-bold px-2 py-1 rounded-full bg-green-100 text-green-700"
+                    >
+                      可調製
+                    </div>
+
                     <div class="flex items-start justify-between">
-                      <div class="flex-1">
+                      <div class="flex-1 pr-4">
                         <h4
-                          class="font-black text-xl text-slate-800 dark:text-white"
+                          class="font-black text-xl text-slate-800 dark:text-white mb-1"
                           x-text="recipe.name"
                         ></h4>
                         <p
-                          class="text-xs text-slate-500 font-bold"
+                          class="text-xs text-slate-500 dark:text-slate-400 font-bold"
                           x-text="recipe.flavor"
                         ></p>
                       </div>
@@ -5804,30 +5935,35 @@
                     x-for="recipe in generatedMenuList"
                     :key="recipe.id"
                   >
-                    <div class="space-y-1">
-                      <h3
-                        class="text-xl font-black text-slate-800 dark:text-white"
-                        x-text="recipe.name"
-                      ></h3>
-                      <p
-                        class="text-sm text-amber-700 dark:text-amber-500 font-bold"
-                        x-text="recipe.flavor"
-                      ></p>
-                      <p
-                        class="text-xs text-slate-500 dark:text-slate-400 pt-1"
-                      >
-                        <template x-for="(ing, index) in recipe.ingredients">
-                          <span
-                            ><span x-text="getIngredientName(ing.id)"></span
-                            ><span
-                              x-show="index < recipe.ingredients.length - 1"
+                    <button
+                      @click="openRecipeDetail(recipe)"
+                      class="text-left p-4 -m-4 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                    >
+                      <div class="space-y-1">
+                        <h3
+                          class="text-xl font-black text-slate-800 dark:text-white"
+                          x-text="recipe.name"
+                        ></h3>
+                        <p
+                          class="text-sm text-amber-700 dark:text-amber-500 font-bold"
+                          x-text="recipe.flavor"
+                        ></p>
+                        <p
+                          class="text-xs text-slate-500 dark:text-slate-400 pt-1"
+                        >
+                          <template x-for="(ing, index) in recipe.ingredients">
+                            <span
+                              ><span x-text="getIngredientName(ing.id)"></span
+                              ><span
+                                x-show="index < recipe.ingredients.length - 1"
+                              >
+                                /
+                              </span></span
                             >
-                              /
-                            </span></span
-                          >
-                        </template>
-                      </p>
-                    </div>
+                          </template>
+                        </p>
+                      </div>
+                    </button>
                   </template>
                 </div>
               </div>
@@ -6685,6 +6821,11 @@
             <div class="flex items-center gap-1">
               <i data-lucide="flame" class="w-3 h-3"></i>
               <span x-text="selectedRecipe.abv"></span>
+              <span
+                class="text-amber-500 text-[10px] bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded ml-1"
+                x-show="calculateRecipeABV(selectedRecipe) > 0"
+                x-text="'試算: ' + calculateRecipeABV(selectedRecipe) + '%'"
+              ></span>
             </div>
             <div class="flex items-center gap-1">
               <i
@@ -6715,11 +6856,36 @@
           ></p>
 
           <div class="mb-8">
-            <h4
-              class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3"
-            >
-              材料清單
-            </h4>
+            <div class="flex items-center justify-between mb-3">
+              <h4
+                class="text-[10px] font-black text-slate-400 uppercase tracking-widest"
+              >
+                材料清單
+              </h4>
+              <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+                <button
+                  @click="currentScale = 1"
+                  :class="currentScale === 1 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
+                  class="px-3 py-1 rounded-md text-xs font-bold transition"
+                >
+                  x1
+                </button>
+                <button
+                  @click="currentScale = 2"
+                  :class="currentScale === 2 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
+                  class="px-3 py-1 rounded-md text-xs font-bold transition"
+                >
+                  x2
+                </button>
+                <button
+                  @click="currentScale = 4"
+                  :class="currentScale === 4 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
+                  class="px-3 py-1 rounded-md text-xs font-bold transition"
+                >
+                  x4
+                </button>
+              </div>
+            </div>
             <div class="grid grid-cols-2 gap-3">
               <template x-for="ing in selectedRecipe.ingredients">
                 <div
@@ -6732,7 +6898,7 @@
                   ></span>
                   <span
                     class="text-xs font-mono text-slate-500"
-                    x-text="convertAmount(ing.amount)"
+                    x-text="getScaledAmount(ing.amount)"
                   ></span>
                 </div>
               </template>
