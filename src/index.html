@@ -31,6 +31,7 @@
         getDoc,
       } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+      // [注意] 請確認此處的設定與您的 Firebase Console > Project Settings 中的設定一致
       const firebaseConfig = {
         apiKey: "AIzaSyAsdPV7Em9xIyr-2HjpyG4nbrcE7GdDUpg",
         authDomain: "home-bartending-lab.firebaseapp.com",
@@ -45,8 +46,12 @@
       const app = initializeApp(firebaseConfig);
       const analytics = getAnalytics(app);
       const auth = getAuth(app);
+      auth.languageCode = "zh-TW";
       const db = getFirestore(app);
       const provider = new GoogleAuthProvider();
+      provider.addScope("profile");
+      provider.addScope("email");
+      provider.setCustomParameters({ prompt: "select_account" });
 
       // [除錯用] 驗證 Firebase 與資料庫初始化狀態
       if (app && db) {
@@ -62,11 +67,30 @@
       // Expose to Global for Alpine.js
       window.firebaseService = {
         login: async () => {
+          if (window.location.protocol === "file:") {
+            alert(
+              "Google 登入功能無法在檔案模式 (file://) 下運作。\n請使用 Local Server (例如 VSCode Live Server) 開啟此網頁。"
+            );
+            return;
+          }
           try {
             await signInWithPopup(auth, provider);
+            console.log("Google 登入成功");
           } catch (error) {
             console.error("Login failed", error);
-            alert("登入失敗: " + error.message);
+            let errorMessage = "登入失敗: " + error.message;
+
+            // 針對常見錯誤提供更清楚的提示
+            if (error.code === "auth/configuration-not-found") {
+              errorMessage =
+                "設定錯誤 (auth/configuration-not-found)：\n請確認 Firebase Console > Authentication > Sign-in method 中已啟用「Google」登入供應商。";
+            } else if (error.code === "auth/popup-closed-by-user") {
+              errorMessage = "登入已取消 (視窗被關閉)";
+            } else if (error.code === "auth/unauthorized-domain") {
+              errorMessage =
+                "網域未授權 (auth/unauthorized-domain)：\n目前的網域尚未加入 Firebase 白名單。\n請前往 Firebase Console > Authentication > Settings > Authorized domains 新增此網域。";
+            }
+            alert(errorMessage);
           }
         },
         logout: async () => {
@@ -95,7 +119,17 @@
             return null;
           }
         },
-        onAuth: (cb) => onAuthStateChanged(auth, cb),
+        onAuth: (cb) => {
+          return onAuthStateChanged(auth, (user) => {
+            // 轉換為純物件，避免 Alpine.js Proxy 與 Firebase User 物件衝突導致 UI 無法更新
+            if (user) {
+              const { uid, displayName, email, photoURL } = user;
+              cb({ uid, displayName, email, photoURL });
+            } else {
+              cb(null);
+            }
+          });
+        },
       };
 
       // Notify Alpine that Firebase is ready
