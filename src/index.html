@@ -225,7 +225,7 @@
             brand: "",
             price: "",
             location: "",
-            expirationDate: "",
+            purchaseDate: "",
             rating: 5,
             notes: "",
             tags: "",
@@ -233,6 +233,9 @@
             remaining: 100,
             volume: 750,
           },
+          drinkingHistory: [],
+          isJournalModalOpen: false,
+          journalForm: { recipeId: null, recipeName: '', date: '', rating: 0, notes: '' },
           modifierForm: { categoryIndex: 0, name: "", desc: "", tag: "" },
           recipeForm: {
             name: "",
@@ -255,6 +258,7 @@
             { id: "ingredients", label: "調酒材料", icon: "flask-conical" },
             { id: "laboratory", label: "實驗室", icon: "beaker" },
             { id: "roulette", label: "喝什麼", icon: "dices" },
+            { id: "journal", label: "飲酒日誌", icon: "history" },
             { id: "collection", label: "酒櫃", icon: "archive" },
             { id: "settings", label: "設定", icon: "settings" },
           ],
@@ -3134,7 +3138,7 @@
               brand: "",
               price: "",
               location: "",
-              expirationDate: "",
+              purchaseDate: "",
               rating: 5,
               notes: "",
               tags: "",
@@ -3147,9 +3151,20 @@
 
           editBottle(bottle) {
             this.editingBottleId = bottle.id;
+            // Manually copy properties to avoid proxy issues and ensure all fields exist
             this.bottleForm = {
-              ...bottle,
-              tags: bottle.tags.join(", "),
+              typeId: bottle.typeId || "gin",
+              name: bottle.name || "",
+              brand: bottle.brand || "",
+              price: bottle.price || "",
+              location: bottle.location || "",
+              purchaseDate: bottle.purchaseDate || "",
+              rating: bottle.rating ?? 5,
+              notes: bottle.notes || "",
+              tags: (bottle.tags || []).join(", "),
+              features: bottle.features || "",
+              remaining: bottle.remaining ?? 100,
+              volume: bottle.volume || 750,
             };
             this.isBottleFormOpen = true;
           },
@@ -3473,6 +3488,7 @@
               favoriteRecipes: this.favoriteRecipes,
               modifiers: this.modifiers,
               shoppingList: this.shoppingList,
+              drinkingHistory: this.drinkingHistory,
               barName: this.barName,
               bartenderName: this.bartenderName,
               unit: this.unit,
@@ -3531,6 +3547,169 @@
               });
           },
 
+          generateRecipeImage(recipe) {
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            const w = 800;
+            const h = 1200;
+            canvas.width = w;
+            canvas.height = h;
+
+            // Background
+            const gradient = ctx.createLinearGradient(0, 0, 0, h);
+            gradient.addColorStop(0, "#0f172a"); // slate-900
+            gradient.addColorStop(1, "#1e293b"); // slate-800
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, w, h);
+
+            // Decorative Elements
+            ctx.fillStyle = "rgba(245, 158, 11, 0.1)"; // amber-500 with opacity
+            ctx.beginPath();
+            ctx.arc(w, 0, 400, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(0, h, 300, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Header (Bar Info)
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#f59e0b"; // amber-500
+            ctx.font = "bold 32px sans-serif";
+            ctx.fillText(this.barName, w / 2, 80);
+
+            ctx.fillStyle = "#94a3b8"; // slate-400
+            ctx.font = "24px sans-serif";
+            ctx.fillText(this.bartenderName, w / 2, 120);
+
+            // Recipe Title
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 60px sans-serif";
+            if (ctx.measureText(recipe.name).width > 700) {
+                 ctx.font = "bold 40px sans-serif";
+            }
+            ctx.fillText(recipe.name, w / 2, 250);
+
+            // Meta Info
+            ctx.fillStyle = "#cbd5e1"; // slate-300
+            ctx.font = "30px sans-serif";
+            ctx.fillText(`${recipe.category}  •  ${recipe.abv}`, w / 2, 310);
+
+            // Flavor
+            ctx.fillStyle = "#f59e0b";
+            ctx.font = "italic 32px sans-serif";
+            ctx.fillText(`"${recipe.flavor}"`, w / 2, 370);
+
+            // Divider
+            ctx.strokeStyle = "#334155";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(100, 430);
+            ctx.lineTo(700, 430);
+            ctx.stroke();
+
+            // Ingredients List
+            let y = 520;
+            ctx.textAlign = "left";
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "bold 28px sans-serif";
+            ctx.fillText("INGREDIENTS", 100, y);
+            y += 60;
+            ctx.font = "36px sans-serif";
+            ctx.fillStyle = "#ffffff";
+            recipe.ingredients.forEach(ing => {
+                const name = this.getIngredientName(ing.id);
+                const amount = this.convertAmount(ing.amount);
+                ctx.textAlign = "left";
+                ctx.fillText(`• ${name}`, 100, y);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#f59e0b";
+                ctx.fillText(amount, 700, y);
+                ctx.fillStyle = "#ffffff";
+                y += 60;
+            });
+
+            // Footer
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#475569";
+            ctx.font = "20px sans-serif";
+            ctx.fillText("Generated by Home Mixology Lab", w / 2, h - 40);
+
+            // Trigger Download
+            try {
+                const link = document.createElement("a");
+                link.download = `Cocktail_${recipe.name.replace(/\s+/g, '_')}.png`;
+                link.href = canvas.toDataURL("image/png");
+                link.click();
+            } catch (e) {
+                console.error("Image generation failed", e);
+                alert("圖片生成失敗，請稍後再試。");
+            }
+          },
+
+          openJournalModal(recipe) {
+            const now = new Date();
+            // Format for datetime-local input: YYYY-MM-DDTHH:mm
+            const dateStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+            
+            this.journalForm = {
+                recipeId: recipe.id,
+                recipeName: recipe.name,
+                date: dateStr,
+                rating: recipe.myRating || 0,
+                notes: ''
+            };
+            this.isJournalModalOpen = true;
+          },
+
+          saveJournalEntry() {
+            this.drinkingHistory.unshift({
+                id: Date.now(),
+                ...this.journalForm
+            });
+            this.isJournalModalOpen = false;
+            this.saveData();
+            alert("已紀錄到飲酒日誌！");
+          },
+
+          deleteJournalEntry(id) {
+            if(confirm("確定要刪除這筆紀錄嗎？")) {
+                this.drinkingHistory = this.drinkingHistory.filter(h => h.id !== id);
+                this.saveData();
+            }
+          },
+
+          get journalStats() {
+             const total = this.drinkingHistory.length;
+             const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+             const thisWeek = this.drinkingHistory.filter(h => new Date(h.date) >= oneWeekAgo).length;
+             
+             const counts = {};
+             const baseCounts = {};
+
+             this.drinkingHistory.forEach(h => {
+                 counts[h.recipeName] = (counts[h.recipeName] || 0) + 1;
+                 
+                 // 計算最常喝的基酒
+                 const recipe = this.recipes.find(r => r.id === h.recipeId);
+                 if (recipe && recipe.ingredients) {
+                     recipe.ingredients.forEach(ing => {
+                         const spirit = this.spiritsData.find(s => s.id === ing.id);
+                         if (spirit) baseCounts[spirit.name.split(' ')[0]] = (baseCounts[spirit.name.split(' ')[0]] || 0) + 1;
+                     });
+                 }
+             });
+
+             const topRecipe = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
+             const topBase = Object.entries(baseCounts).sort((a,b) => b[1] - a[1])[0];
+             
+             return {
+                 total,
+                 thisWeek,
+                 favorite: topRecipe ? `${topRecipe[0]} (${topRecipe[1]}杯)` : '尚無資料',
+                 favoriteBase: topBase ? `${topBase[0]} (${topBase[1]}杯)` : '尚無資料'
+             };
+          },
+
           saveData() {
             localStorage.setItem(
               "cocktail_data",
@@ -3541,6 +3720,7 @@
                 favoriteRecipes: this.favoriteRecipes,
                 modifiers: this.modifiers,
                 shoppingList: this.shoppingList,
+                drinkingHistory: this.drinkingHistory,
                 barName: this.barName,
                 bartenderName: this.bartenderName,
                 unit: this.unit,
@@ -3565,6 +3745,7 @@
             if (data.myBottles) this.myBottles = data.myBottles;
             if (data.favoriteRecipes)
               this.favoriteRecipes = data.favoriteRecipes;
+            if (data.drinkingHistory) this.drinkingHistory = data.drinkingHistory;
 
             if (data.recipes) {
               const savedRecipes = data.recipes;
@@ -3654,6 +3835,7 @@
                 if (data.recipes) this.recipes = data.recipes;
                 if (data.modifiers) this.modifiers = data.modifiers;
                 if (data.shoppingList) this.shoppingList = data.shoppingList;
+                if (data.drinkingHistory) this.drinkingHistory = data.drinkingHistory;
                 if (data.barName) this.barName = data.barName;
                 if (data.bartenderName) this.bartenderName = data.bartenderName;
                 if (data.unit) this.unit = data.unit;
@@ -3694,6 +3876,7 @@
             });
             this.$watch("modifiers", () => this.saveData());
             this.$watch("shoppingList", () => this.saveData());
+            this.$watch("drinkingHistory", () => this.saveData());
             this.$watch("barName", (val) => {
               this.saveData();
               document.title = val + " - " + this.bartenderName;
@@ -3722,6 +3905,9 @@
               this.$nextTick(() => lucide.createIcons())
             );
             this.$watch("isNoteModalOpen", () =>
+              this.$nextTick(() => lucide.createIcons())
+            );
+            this.$watch("isJournalModalOpen", () =>
               this.$nextTick(() => lucide.createIcons())
             );
             this.setupRoulette(); // 初始化輪盤
@@ -4282,6 +4468,30 @@
                   </span>
                 </div>
               </div>
+
+              <!-- IBA Official Cocktails Card -->
+              <a
+                href="https://iba-world.com/cocktails/all-cocktails/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="md:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-purple-400 dark:hover:border-purple-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
+              >
+                <div class="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <i data-lucide="globe" class="w-32 h-32 text-purple-500"></i>
+                </div>
+                <div class="relative z-10">
+                  <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-500 dark:text-purple-400 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <i data-lucide="globe" class="w-6 h-6"></i>
+                  </div>
+                  <h3 class="text-2xl font-black text-slate-900 dark:text-white mb-2">IBA 官方酒譜</h3>
+                  <p class="text-slate-500 dark:text-slate-400 font-medium mb-4">
+                    前往國際調酒師協會 (IBA) 網站，探索官方認證的經典酒譜。
+                  </p>
+                  <span class="text-purple-500 dark:text-purple-400 font-bold flex items-center gap-2 group-hover:gap-4 transition-all">
+                    開啟外部連結 <i data-lucide="external-link" class="w-4 h-4"></i>
+                  </span>
+                </div>
+              </a>
             </div>
           </div>
 
@@ -4901,6 +5111,20 @@
                         <i data-lucide="share-2" class="w-4 h-4"></i>
                       </button>
                       <button
+                        @click.stop="openJournalModal(recipe)"
+                        class="text-slate-300 hover:text-green-500 transition p-1 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg"
+                        title="紀錄飲酒"
+                      >
+                        <i data-lucide="calendar-plus" class="w-4 h-4"></i>
+                      </button>
+                      <button
+                        @click.stop="generateRecipeImage(recipe)"
+                        class="text-slate-300 hover:text-purple-500 transition p-1 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg"
+                        title="下載酒譜卡片"
+                      >
+                        <i data-lucide="image-down" class="w-4 h-4"></i>
+                      </button>
+                      <button
                         @click.stop="editRecipe(recipe)"
                         class="text-slate-300 hover:text-amber-500 transition p-1 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg"
                         title="編輯酒譜"
@@ -5160,6 +5384,20 @@
                         title="分享酒譜"
                       >
                         <i data-lucide="share-2" class="w-4 h-4"></i>
+                      </button>
+                      <button
+                        @click.stop="openJournalModal(recipe)"
+                        class="text-slate-300 hover:text-green-500 transition p-1 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg"
+                        title="紀錄飲酒"
+                      >
+                        <i data-lucide="calendar-plus" class="w-4 h-4"></i>
+                      </button>
+                      <button
+                        @click.stop="generateRecipeImage(recipe)"
+                        class="text-slate-300 hover:text-purple-500 transition p-1 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg"
+                        title="下載酒譜卡片"
+                      >
+                        <i data-lucide="image-down" class="w-4 h-4"></i>
                       </button>
                       <button
                         @click.stop="editRecipe(recipe)"
@@ -5685,26 +5923,26 @@
                     </div>
 
                     <div
-                      class="grid grid-cols-2 gap-y-2 gap-x-4 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 pb-3"
-                      x-show="bottle.location || bottle.expirationDate || bottle.features"
+                      class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800 pb-3"
+                      x-show="bottle.location || bottle.features || bottle.purchaseDate"
                     >
                       <div
                         x-show="bottle.location"
-                        class="col-span-1 flex items-center gap-1"
+                        class="flex items-center gap-1"
                       >
                         <i data-lucide="map-pin" class="w-3 h-3"></i>
                         <span x-text="bottle.location"></span>
                       </div>
                       <div
-                        x-show="bottle.expirationDate"
-                        class="col-span-1 flex items-center gap-1"
+                        x-show="bottle.purchaseDate"
+                        class="flex items-center gap-1"
                       >
                         <i data-lucide="calendar" class="w-3 h-3"></i>
-                        <span x-text="bottle.expirationDate"></span>
+                        <span x-text="bottle.purchaseDate"></span>
                       </div>
-                      <div x-show="bottle.features" class="col-span-2 mt-1">
+                      <div x-show="bottle.features" class="w-full">
                         <span
-                          class="font-bold text-amber-600 bg-amber-50 px-1 rounded"
+                          class="font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 px-1 rounded"
                           >特色</span
                         >
                         <span x-text="bottle.features"></span>
@@ -5723,7 +5961,7 @@
                         >
                           <span x-text="bottle.remaining + '%'"></span>
                           <span class="text-slate-400 font-normal" x-text="' ≈ ' + Math.round((bottle.volume || 750) * bottle.remaining / 100) + 'ml'"></span>
-                        </div>
+                        </span>
                       </div>
                       <input
                         type="range"
@@ -6070,6 +6308,85 @@
                   </template>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- === 飲酒日誌 === -->
+          <div x-show="activeTab === 'journal'" class="space-y-8 animate-fade-in" x-cloak>
+            <h2 class="text-4xl font-black text-slate-900 dark:text-white">飲酒日誌</h2>
+            
+            <!-- 統計卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
+                        <i data-lucide="wine" class="w-5 h-5"></i>
+                        <span class="font-bold text-xs uppercase tracking-widest">累積飲用</span>
+                    </div>
+                    <div class="text-4xl font-black text-slate-900 dark:text-white" x-text="journalStats.total + ' 杯'"></div>
+                </div>
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
+                        <i data-lucide="calendar-days" class="w-5 h-5"></i>
+                        <span class="font-bold text-xs uppercase tracking-widest">本週飲用</span>
+                    </div>
+                    <div class="text-4xl font-black text-amber-500" x-text="journalStats.thisWeek + ' 杯'"></div>
+                </div>
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
+                        <i data-lucide="heart" class="w-5 h-5"></i>
+                        <span class="font-bold text-xs uppercase tracking-widest">最常喝</span>
+                    </div>
+                    <div class="text-2xl font-black text-slate-900 dark:text-white truncate" x-text="journalStats.favorite"></div>
+                </div>
+                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
+                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
+                        <i data-lucide="droplet" class="w-5 h-5"></i>
+                        <span class="font-bold text-xs uppercase tracking-widest">最愛基酒</span>
+                    </div>
+                    <div class="text-2xl font-black text-slate-900 dark:text-white truncate" x-text="journalStats.favoriteBase"></div>
+                </div>
+            </div>
+
+            <!-- 時間軸 -->
+            <div class="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+                <h3 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-3">
+                    <i data-lucide="history" class="text-amber-500"></i> 歷史紀錄
+                </h3>
+                
+                <div x-show="drinkingHistory.length === 0" class="text-center py-10 text-slate-400">
+                    <p>尚無紀錄，快去調一杯酒吧！</p>
+                </div>
+
+                <div class="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
+                    <template x-for="item in drinkingHistory" :key="item.id">
+                        <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                            <!-- Icon -->
+                            <div class="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-900 bg-amber-500 text-slate-900 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
+                                <i data-lucide="glass-water" class="w-5 h-5"></i>
+                            </div>
+                            
+                            <!-- Card -->
+                            <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div class="font-black text-lg text-slate-800 dark:text-white" x-text="item.recipeName"></div>
+                                    <button @click="deleteJournalEntry(item.id)" class="text-slate-300 hover:text-red-500 transition">
+                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                                <div class="text-xs font-bold text-slate-400 mb-3 flex items-center gap-2">
+                                    <i data-lucide="clock" class="w-3 h-3"></i>
+                                    <span x-text="new Date(item.date).toLocaleString()"></span>
+                                </div>
+                                <div class="flex items-center gap-1 mb-3">
+                                    <template x-for="i in 5">
+                                        <i data-lucide="star" class="w-3 h-3" :class="i <= item.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-600'"></i>
+                                    </template>
+                                </div>
+                                <p x-show="item.notes" class="text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900/50 p-3 rounded-xl italic" x-text="item.notes"></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
             </div>
           </div>
 
@@ -6455,6 +6772,19 @@
             <div>
               <label
                 class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                >購買日期</label
+              >
+              <input
+                type="date"
+                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                x-model="bottleForm.purchaseDate"
+              />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <label
+                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
                 >容量 (ml)</label
               >
               <input
@@ -6464,8 +6794,6 @@
                 x-model="bottleForm.volume"
               />
             </div>
-          </div>
-          <div class="grid grid-cols-2 gap-6">
             <div>
               <label
                 class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
@@ -6479,18 +6807,18 @@
                 x-model="bottleForm.rating"
               />
             </div>
-            <div>
-              <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
-                >標籤 (逗號分隔)</label
-              >
-              <input
-                type="text"
-                placeholder="例如：清爽, 限量"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
-                x-model="bottleForm.tags"
-              />
-            </div>
+          </div>
+          <div>
+            <label
+              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              >標籤 (逗號分隔)</label
+            >
+            <input
+              type="text"
+              placeholder="例如：清爽, 限量"
+              class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+              x-model="bottleForm.tags"
+            />
           </div>
           <div>
             <label
@@ -6911,6 +7239,20 @@
           >
             <i data-lucide="share-2" class="w-5 h-5"></i>
           </button>
+          <button
+            @click="generateRecipeImage(selectedRecipe)"
+            class="absolute top-8 right-56 z-10 p-2 rounded-full transition text-slate-300 bg-slate-100 dark:bg-slate-800 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+            title="下載酒譜卡片"
+          >
+            <i data-lucide="image-down" class="w-5 h-5"></i>
+          </button>
+          <button
+            @click="openJournalModal(selectedRecipe)"
+            class="absolute top-8 right-[17rem] z-10 p-2 rounded-full transition text-slate-300 bg-slate-100 dark:bg-slate-800 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20"
+            title="紀錄飲酒"
+          >
+            <i data-lucide="calendar-plus" class="w-5 h-5"></i>
+          </button>
           <div class="flex items-center gap-3 mb-6">
             <div class="p-3 bg-amber-100 text-amber-600 rounded-2xl">
               <i data-lucide="glass-water" class="w-8 h-8"></i>
@@ -7160,6 +7502,64 @@
             class="w-full py-4 bg-amber-500 text-slate-900 font-black rounded-2xl shadow-lg hover:bg-amber-400 transition flex items-center justify-center gap-2"
           >
             <i data-lucide="save" class="w-5 h-5"></i> 儲存筆記
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- --- 表單彈窗：飲酒日誌紀錄 --- -->
+    <div
+      x-show="isJournalModalOpen"
+      class="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
+      x-cloak
+    >
+      <div
+        class="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col"
+      >
+        <div
+          class="p-8 bg-slate-50 dark:bg-slate-800 border-b dark:border-slate-700 flex justify-between items-center"
+        >
+          <h3
+            class="font-black text-2xl flex items-center gap-3 text-slate-900 dark:text-white"
+          >
+            <i data-lucide="calendar-plus" class="text-green-500"></i> 紀錄一杯
+          </h3>
+          <button
+            @click="isJournalModalOpen = false"
+            class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+        <form @submit.prevent="saveJournalEntry()" class="p-8 space-y-6">
+          <div class="text-center mb-4">
+            <h4 class="text-xl font-black text-slate-800 dark:text-white" x-text="journalForm.recipeName"></h4>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">紀錄美好的微醺時刻</p>
+          </div>
+          
+          <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">飲用時間</label>
+            <input type="datetime-local" required class="w-full p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-slate-800 dark:text-white" x-model="journalForm.date">
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">本次評分</label>
+            <div class="flex gap-2">
+               <template x-for="i in 5">
+                <button type="button" @click="journalForm.rating = i" class="focus:outline-none transition hover:scale-110">
+                  <i data-lucide="star" class="w-8 h-8" :class="i <= journalForm.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200 dark:text-slate-700'"></i>
+                </button>
+               </template>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">品飲筆記 (選填)</label>
+            <textarea placeholder="這次的口感如何？太酸？太甜？還是完美？" class="w-full p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium text-sm resize-none h-24" x-model="journalForm.notes"></textarea>
+          </div>
+
+          <button type="submit" class="w-full py-4 bg-green-500 text-white font-black rounded-2xl shadow-lg hover:bg-green-400 transition flex items-center justify-center gap-2">
+            <i data-lucide="check" class="w-5 h-5"></i> 儲存紀錄
           </button>
         </form>
       </div>
