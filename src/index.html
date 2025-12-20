@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>居家調酒實驗室 - Home Mixology Lab</title>
+    <title>居家調酒實驗室99 - Home Mixology Lab</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Lucide Icons -->
@@ -11,6 +11,38 @@
     <script>
       tailwind.config = {
         darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              gray: {
+                50: '#f8fafc',
+                100: '#f1f5f9',
+                200: '#e2e8f0',
+                300: '#cbd5e1',
+                400: '#94a3b8',
+                500: '#64748b',
+                600: '#475569',
+                700: '#334155',
+                800: '#1e293b',
+                900: '#0f172a',
+                950: '#020617',
+              },
+              yellow: {
+                50: '#fffbeb',
+                100: '#fef3c7',
+                200: '#fde68a',
+                300: '#fcd34d',
+                400: '#fbbf24',
+                500: '#f59e0b',
+                600: '#d97706',
+                700: '#b45309',
+                800: '#92400e',
+                900: '#78350f',
+                950: '#451a03',
+              }
+            }
+          }
+        }
       };
     </script>
     <!-- Firebase SDK (Module) -->
@@ -222,10 +254,10 @@
           batchMode: false,
           targetVolume: 2000,
           // AI Bartender
-          geminiApiKey: localStorage.getItem('gemini_api_key') || '',
-          isAiModalOpen: false,
+          geminiApiKey: localStorage.getItem("gemini_api_key") || "",
           aiLoading: false,
           aiResult: null,
+          aiFlavorInput: "",
 
           // 表單資料
           bottleForm: {
@@ -235,6 +267,7 @@
             price: "",
             location: "",
             purchaseDate: "",
+            openDate: "", // 新增開封日期
             rating: 5,
             notes: "",
             tags: "",
@@ -244,7 +277,14 @@
           },
           drinkingHistory: [],
           isJournalModalOpen: false,
-          journalForm: { id: null, recipeId: null, recipeName: '', date: '', rating: 0, notes: '' },
+          journalForm: {
+            id: null,
+            recipeId: null,
+            recipeName: "",
+            date: "",
+            rating: 0,
+            notes: "",
+          },
           modifierForm: { categoryIndex: 0, name: "", desc: "", tag: "" },
           recipeForm: {
             name: "",
@@ -288,7 +328,7 @@
               intro:
                 "威士忌是「穀物發酵」後經蒸餾，並在「橡木桶」中陳年的烈酒。其風味公式為：原料 (20%) + 蒸餾 (20%) + 桶陳 (60%)。",
               icon: "wine",
-              color: "bg-amber-100 text-amber-800",
+              color: "bg-yellow-100 text-yellow-800",
               sections: [
                 {
                   title: "1. 核心原料與化學",
@@ -2937,9 +2977,9 @@
 
             // 針對「補滿」的特殊處理 (Batch Mode)
             if (this.batchMode && amount.includes("補滿")) {
-                const baseVol = this.parseVolume(amount, id || '');
-                const totalVol = Math.round(baseVol * this.currentScale);
-                return `${totalVol} ml`;
+              const baseVol = this.parseVolume(amount, id || "");
+              const totalVol = Math.round(baseVol * this.currentScale);
+              return `${totalVol} ml`;
             }
 
             // 自動辨識並乘算字串中的數字
@@ -2957,8 +2997,8 @@
           getRecipeTotalVolume(recipe) {
             if (!recipe || !recipe.ingredients) return 0;
             let total = 0;
-            recipe.ingredients.forEach(ing => {
-                total += this.parseVolume(ing.amount, ing.id);
+            recipe.ingredients.forEach((ing) => {
+              total += this.parseVolume(ing.amount, ing.id);
             });
             return total || 150; // 若無法計算則回傳預設值避免錯誤
           },
@@ -2966,9 +3006,9 @@
           toggleBatchMode() {
             this.batchMode = !this.batchMode;
             if (this.batchMode) {
-                this.updateBatchScale();
+              this.updateBatchScale();
             } else {
-                this.currentScale = 1;
+              this.currentScale = 1;
             }
           },
 
@@ -2976,7 +3016,7 @@
             if (!this.selectedRecipe) return;
             const total = this.getRecipeTotalVolume(this.selectedRecipe);
             if (total > 0) {
-                this.currentScale = this.targetVolume / total;
+              this.currentScale = this.targetVolume / total;
             }
           },
 
@@ -2997,50 +3037,80 @@
             // 2. 若無手動設定，則自動計算
             if (!recipe || !recipe.ingredients) return 0;
             let totalCost = 0;
-            
+
             // 市場行情預設成本 (NTD/ml) - 當酒櫃找不到時的參考價
             const defaultCosts = {
-                base: 0.8,    // 一般基酒 (~$600/瓶)
-                liqueur: 1.0, // 利口酒 (~$750/瓶)
-                mixer: 0.15,  // 汽水/通寧水 (~$50/罐)
-                juice: 0.5,   // 新鮮果汁 (~$15/顆)
-                syrup: 0.2,   // 糖漿
-                bitters: 3.0, // 苦精 (用量少單價高)
-                egg: 10,      // 蛋 (單顆)
-                garnish: 2    // 裝飾物
+              base: 0.8, // 一般基酒 (~$600/瓶)
+              liqueur: 1.0, // 利口酒 (~$750/瓶)
+              mixer: 0.15, // 汽水/通寧水 (~$50/罐)
+              juice: 0.5, // 新鮮果汁 (~$15/顆)
+              syrup: 0.2, // 糖漿
+              bitters: 3.0, // 苦精 (用量少單價高)
+              egg: 10, // 蛋 (單顆)
+              garnish: 2, // 裝飾物
             };
 
-            recipe.ingredients.forEach(ing => {
-                // 1. 計算份量 (ml)
-                let vol = this.parseVolume(ing.amount, ing.id);
-                
-                // 特殊處理：蛋
-                if (ing.id === 'egg_white' || ing.id === 'egg_whole') {
-                    totalCost += defaultCosts.egg;
-                    return;
-                }
-                
-                // 2. 決定單價 (NTD/ml)
-                let costPerMl = 0;
-                
-                // A. 優先查酒櫃 (取平均價)
-                const myStock = this.myBottles.filter(b => b.typeId === ing.id && b.price);
-                if (myStock.length > 0) {
-                    const avgPrice = myStock.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0) / myStock.length;
-                    // 假設標準瓶 750ml (若為大瓶裝可自行調整參數，此為估算值)
-                    costPerMl = avgPrice / 750;
-                } else {
-                    // B. 查不到則使用預設估算
-                    if (this.spiritsData.some(s => s.id === ing.id)) costPerMl = defaultCosts.base;
-                    else if (ing.id.includes('liqueur') || ing.id.includes('vermouth') || ing.id === 'campari' || ing.id === 'aperol') costPerMl = defaultCosts.liqueur;
-                    else if (ing.id.includes('juice') || ing.id === 'lemon' || ing.id === 'lime') costPerMl = defaultCosts.juice;
-                    else if (ing.id.includes('syrup') || ing.id === 'sugar' || ing.id === 'honey') costPerMl = defaultCosts.syrup;
-                    else if (ing.id.includes('bitters')) costPerMl = defaultCosts.bitters;
-                    else if (ing.id.includes('soda') || ing.id.includes('tonic') || ing.id.includes('coke') || ing.id.includes('ginger')) costPerMl = defaultCosts.mixer;
-                    else costPerMl = 0.1; // 其他雜項
-                }
-                
-                totalCost += vol * costPerMl;
+            recipe.ingredients.forEach((ing) => {
+              // 1. 計算份量 (ml)
+              let vol = this.parseVolume(ing.amount, ing.id);
+
+              // 特殊處理：蛋
+              if (ing.id === "egg_white" || ing.id === "egg_whole") {
+                totalCost += defaultCosts.egg;
+                return;
+              }
+
+              // 2. 決定單價 (NTD/ml)
+              let costPerMl = 0;
+
+              // A. 優先查酒櫃 (取平均價)
+              const myStock = this.myBottles.filter(
+                (b) => b.typeId === ing.id && b.price
+              );
+              if (myStock.length > 0) {
+                const avgPrice =
+                  myStock.reduce(
+                    (sum, b) => sum + (parseFloat(b.price) || 0),
+                    0
+                  ) / myStock.length;
+                // 假設標準瓶 750ml (若為大瓶裝可自行調整參數，此為估算值)
+                costPerMl = avgPrice / 750;
+              } else {
+                // B. 查不到則使用預設估算
+                if (this.spiritsData.some((s) => s.id === ing.id))
+                  costPerMl = defaultCosts.base;
+                else if (
+                  ing.id.includes("liqueur") ||
+                  ing.id.includes("vermouth") ||
+                  ing.id === "campari" ||
+                  ing.id === "aperol"
+                )
+                  costPerMl = defaultCosts.liqueur;
+                else if (
+                  ing.id.includes("juice") ||
+                  ing.id === "lemon" ||
+                  ing.id === "lime"
+                )
+                  costPerMl = defaultCosts.juice;
+                else if (
+                  ing.id.includes("syrup") ||
+                  ing.id === "sugar" ||
+                  ing.id === "honey"
+                )
+                  costPerMl = defaultCosts.syrup;
+                else if (ing.id.includes("bitters"))
+                  costPerMl = defaultCosts.bitters;
+                else if (
+                  ing.id.includes("soda") ||
+                  ing.id.includes("tonic") ||
+                  ing.id.includes("coke") ||
+                  ing.id.includes("ginger")
+                )
+                  costPerMl = defaultCosts.mixer;
+                else costPerMl = 0.1; // 其他雜項
+              }
+
+              totalCost += vol * costPerMl;
             });
 
             // 乘上目前的份數倍率
@@ -3049,24 +3119,32 @@
 
           // --- Radar Chart Helpers ---
           getRadarPath(profile, radius = 80) {
-            const p = profile || { sweet: 0, sour: 0, bitter: 0, boozy: 0, complex: 0 };
+            const p = profile || {
+              sweet: 0,
+              sour: 0,
+              bitter: 0,
+              boozy: 0,
+              complex: 0,
+            };
             const values = [p.sweet, p.sour, p.bitter, p.boozy, p.complex];
-            return values.map((v, i) => {
+            return values
+              .map((v, i) => {
                 const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
                 const r = (v / 5) * radius;
                 const x = 100 + r * Math.cos(angle);
                 const y = 100 + r * Math.sin(angle);
                 return `${x},${y}`;
-            }).join(" ");
+              })
+              .join(" ");
           },
           getRadarGrid(level, radius = 80) {
             const points = [];
-            for(let i=0; i<5; i++) {
-                const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-                const r = (level / 5) * radius;
-                const x = 100 + r * Math.cos(angle);
-                const y = 100 + r * Math.sin(angle);
-                points.push(`${x},${y}`);
+            for (let i = 0; i < 5; i++) {
+              const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+              const r = (level / 5) * radius;
+              const x = 100 + r * Math.cos(angle);
+              const y = 100 + r * Math.sin(angle);
+              points.push(`${x},${y}`);
             }
             return points.join(" ");
           },
@@ -3156,8 +3234,8 @@
 
           get totalAssetValue() {
             return this.myBottles.reduce((total, bottle) => {
-                const price = parseFloat(bottle.price);
-                return total + (isNaN(price) ? 0 : price);
+              const price = parseFloat(bottle.price);
+              return total + (isNaN(price) ? 0 : price);
             }, 0);
           },
 
@@ -3214,7 +3292,7 @@
               tags: "",
               features: "",
               remaining: 100,
-            volume: 750,
+              volume: 750,
             };
             this.isBottleFormOpen = true;
           },
@@ -3229,6 +3307,7 @@
               price: bottle.price || "",
               location: bottle.location || "",
               purchaseDate: bottle.purchaseDate || "",
+              openDate: bottle.openDate || "",
               rating: bottle.rating ?? 5,
               notes: bottle.notes || "",
               tags: (bottle.tags || []).join(", "),
@@ -3350,7 +3429,12 @@
               steps: recipe.steps.join("\n"),
               tips: recipe.tips,
               cost: recipe.cost ?? null,
-              profile: recipe.profile || { sweet: 1, sour: 1, bitter: 1, boozy: 1, complex: 1 },
+              profile: recipe.profile || {
+                sweet: 1,
+                bitter: 1,
+                boozy: 1,
+                complex: 1,
+              },
             };
             this.isRecipeFormOpen = true;
           },
@@ -3380,21 +3464,21 @@
 
           deleteNote() {
             if (confirm("確定要刪除這筆評分與筆記嗎？")) {
-                const index = this.recipes.findIndex(
-                  (r) => r.id === this.noteForm.id
-                );
-                if (index !== -1) {
-                  // 使用物件替換以確保 computed properties (如 getAvailableRecipes) 能偵測到變更
-                  this.recipes[index] = {
-                    ...this.recipes[index],
-                    myRating: 0,
-                    myNotes: ""
-                  };
-                  this.noteForm.rating = 0;
-                  this.noteForm.notes = "";
-                }
-                this.isNoteModalOpen = false;
-                this.$nextTick(() => lucide.createIcons());
+              const index = this.recipes.findIndex(
+                (r) => r.id === this.noteForm.id
+              );
+              if (index !== -1) {
+                // 使用物件替換以確保 computed properties (如 getAvailableRecipes) 能偵測到變更
+                this.recipes[index] = {
+                  ...this.recipes[index],
+                  myRating: 0,
+                  myNotes: "",
+                };
+                this.noteForm.rating = 0;
+                this.noteForm.notes = "";
+              }
+              this.isNoteModalOpen = false;
+              this.$nextTick(() => lucide.createIcons());
             }
           },
 
@@ -3580,15 +3664,24 @@
             this.aiResult = null;
 
             // 準備庫存清單
-            const inventory = this.myIngredients.map(id => this.getIngredientName(id)).join(', ');
-            const specificBottles = this.myBottles.map(b => `${b.name} (${this.getIngredientName(b.typeId)})`).join(', ');
-            
+            const inventory = this.myIngredients
+              .map((id) => this.getIngredientName(id))
+              .join(", ");
+            const specificBottles = this.myBottles
+              .map((b) => `${b.name} (${this.getIngredientName(b.typeId)})`)
+              .join(", ");
+
             const prompt = `
               Role: World Class Mixologist.
               Task: Invent a NEW, unique cocktail recipe based on the user's available inventory.
               
               User's Inventory (Ingredients): ${inventory}
               User's Specific Bottles: ${specificBottles}
+              User's Preferences/Keywords: ${
+                this.aiFlavorInput
+                  ? this.aiFlavorInput
+                  : "No specific preference, surprise me with something balanced."
+              }
               (Assume basic pantry items like Sugar, Water, Ice, Simple Syrup are available).
 
               Requirements:
@@ -3617,26 +3710,31 @@
             `;
 
             try {
-              const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${this.geminiApiKey}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: prompt }] }]
-                })
-              });
+              const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.geminiApiKey}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                  }),
+                }
+              );
 
               const data = await response.json();
-              
+
               if (data.error) {
                 throw new Error(data.error.message);
               }
 
               let text = data.candidates[0].content.parts[0].text;
               // Clean up markdown if present
-              text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-              
-              this.aiResult = JSON.parse(text);
+              text = text
+                .replace(/```json/g, "")
+                .replace(/```/g, "")
+                .trim();
 
+              this.aiResult = JSON.parse(text);
             } catch (error) {
               console.error("AI Generation failed", error);
               alert("AI 調酒師連線失敗：\n" + error.message);
@@ -3649,58 +3747,67 @@
             if (!this.aiResult) return;
 
             // 嘗試將 AI 產生的材料名稱對應回系統 ID，若無則使用名稱當 ID
-            const ingredients = this.aiResult.ingredients.map(aiIng => {
-                // 簡單模糊比對
-                const found = this.allIngredientsList.find(i => i.name === aiIng.name || i.name.includes(aiIng.name) || aiIng.name.includes(i.name));
-                return {
-                    id: found ? found.id : aiIng.name,
-                    amount: aiIng.amount
-                };
+            const ingredients = this.aiResult.ingredients.map((aiIng) => {
+              // 簡單模糊比對
+              const found = this.allIngredientsList.find(
+                (i) =>
+                  i.name === aiIng.name ||
+                  i.name.includes(aiIng.name) ||
+                  aiIng.name.includes(i.name)
+              );
+              return {
+                id: found ? found.id : aiIng.name,
+                amount: aiIng.amount,
+              };
             });
 
             const newRecipe = {
-                id: Date.now(),
-                name: this.aiResult.name,
-                category: "AI 特調",
-                abv: "未知",
-                difficulty: 3,
-                flavor: this.aiResult.flavor,
-                features: this.aiResult.features,
-                tags: ["AI", "特調"],
-                ingredients: ingredients,
-                steps: this.aiResult.steps,
-                tips: "由 AI 智能調酒師生成",
-                cost: null,
-                profile: this.aiResult.profile,
-                myRating: 0,
-                myNotes: ""
+              id: Date.now(),
+              name: this.aiResult.name,
+              category: "AI 特調",
+              abv: "未知",
+              difficulty: 3,
+              flavor: this.aiResult.flavor,
+              features: this.aiResult.features,
+              tags: ["AI", "特調"],
+              ingredients: ingredients,
+              steps: this.aiResult.steps,
+              tips: "由 AI 智能調酒師生成",
+              cost: null,
+              profile: this.aiResult.profile,
+              myRating: 0,
+              myNotes: "",
             };
 
             this.recipes.push(newRecipe);
             this.isAiModalOpen = false;
             this.aiResult = null;
             alert("已將 AI 特調加入酒譜庫！");
-            this.activeTab = 'recipes';
+            this.activeTab = "recipes";
           },
 
           async testAiConnection() {
-             if (!this.geminiApiKey) {
+            if (!this.geminiApiKey) {
               alert("請先輸入 API Key");
               return;
             }
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${this.geminiApiKey}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  contents: [{ parts: [{ text: "Say 'OK'" }] }]
-                })
-              });
+              const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.geminiApiKey}`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: "Say 'OK'" }] }],
+                  }),
+                }
+              );
               const data = await response.json();
-              if(response.ok) alert("連線成功！(Gemini 2.0)");
-              else alert("連線失敗：" + (data.error?.message || "請檢查 API Key"));
-            } catch(e) {
-                alert("連線錯誤：" + e.message);
+              if (response.ok) alert("連線成功！(Gemini 2.5 Flash)");
+              else
+                alert("連線失敗：" + (data.error?.message || "請檢查 API Key"));
+            } catch (e) {
+              alert("連線錯誤：" + e.message);
             }
           },
 
@@ -3819,7 +3926,7 @@
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 60px sans-serif";
             if (ctx.measureText(recipe.name).width > 700) {
-                 ctx.font = "bold 40px sans-serif";
+              ctx.font = "bold 40px sans-serif";
             }
             ctx.fillText(recipe.name, w / 2, 250);
 
@@ -3850,16 +3957,16 @@
             y += 60;
             ctx.font = "36px sans-serif";
             ctx.fillStyle = "#ffffff";
-            recipe.ingredients.forEach(ing => {
-                const name = this.getIngredientName(ing.id);
-                const amount = this.convertAmount(ing.amount);
-                ctx.textAlign = "left";
-                ctx.fillText(`• ${name}`, 100, y);
-                ctx.textAlign = "right";
-                ctx.fillStyle = "#f59e0b";
-                ctx.fillText(amount, 700, y);
-                ctx.fillStyle = "#ffffff";
-                y += 60;
+            recipe.ingredients.forEach((ing) => {
+              const name = this.getIngredientName(ing.id);
+              const amount = this.convertAmount(ing.amount);
+              ctx.textAlign = "left";
+              ctx.fillText(`• ${name}`, 100, y);
+              ctx.textAlign = "right";
+              ctx.fillStyle = "#f59e0b";
+              ctx.fillText(amount, 700, y);
+              ctx.fillStyle = "#ffffff";
+              y += 60;
             });
 
             // Footer
@@ -3870,42 +3977,50 @@
 
             // Trigger Download
             try {
-                const link = document.createElement("a");
-                link.download = `Cocktail_${recipe.name.replace(/\s+/g, '_')}.png`;
-                link.href = canvas.toDataURL("image/png");
-                link.click();
+              const link = document.createElement("a");
+              link.download = `Cocktail_${recipe.name.replace(
+                /\s+/g,
+                "_"
+              )}.png`;
+              link.href = canvas.toDataURL("image/png");
+              link.click();
             } catch (e) {
-                console.error("Image generation failed", e);
-                alert("圖片生成失敗，請稍後再試。");
+              console.error("Image generation failed", e);
+              alert("圖片生成失敗，請稍後再試。");
             }
           },
 
           openJournalModal(recipe) {
             const now = new Date();
             // Format for datetime-local input: YYYY-MM-DDTHH:mm
-            const dateStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-            
+            const dateStr = new Date(
+              now.getTime() - now.getTimezoneOffset() * 60000
+            )
+              .toISOString()
+              .slice(0, 16);
+
             this.journalForm = {
-                id: null,
-                recipeId: recipe.id,
-                recipeName: recipe.name,
-                date: dateStr,
-                rating: parseInt(recipe.myRating) || 0,
-                notes: ''
+              id: null,
+              recipeId: recipe.id,
+              recipeName: recipe.name,
+              date: dateStr,
+              rating: parseInt(recipe.myRating) || 0,
+              notes: "",
             };
             this.isJournalModalOpen = true;
           },
 
           editJournalEntry(entry) {
             // 確保取得最新的資料 (避免列表未更新導致的舊資料問題)
-            const freshEntry = this.drinkingHistory.find(h => h.id === entry.id) || entry;
+            const freshEntry =
+              this.drinkingHistory.find((h) => h.id === entry.id) || entry;
             this.journalForm = {
-                id: freshEntry.id,
-                recipeId: freshEntry.recipeId,
-                recipeName: freshEntry.recipeName,
-                date: freshEntry.date,
-                rating: parseInt(freshEntry.rating, 10) || 0,
-                notes: freshEntry.notes || ''
+              id: freshEntry.id,
+              recipeId: freshEntry.recipeId,
+              recipeName: freshEntry.recipeName,
+              date: freshEntry.date,
+              rating: parseInt(freshEntry.rating, 10) || 0,
+              notes: freshEntry.notes || "",
             };
             this.isJournalModalOpen = true;
           },
@@ -3914,67 +4029,83 @@
             const rating = parseInt(this.journalForm.rating, 10) || 0;
 
             if (this.journalForm.id) {
-                const index = this.drinkingHistory.findIndex(h => h.id === this.journalForm.id);
-                if (index !== -1) {
-                    this.drinkingHistory[index] = {
-                        ...this.drinkingHistory[index],
-                        date: this.journalForm.date,
-                        rating: rating,
-                        notes: this.journalForm.notes
-                    };
-                    alert("日誌紀錄已更新！");
-                }
-            } else {
-                // 確保 ID 正確生成 (覆蓋 journalForm 中的 null)
-                const newEntry = {
-                    ...this.journalForm,
-                    id: Date.now(),
-                    rating: rating
+              const index = this.drinkingHistory.findIndex(
+                (h) => h.id === this.journalForm.id
+              );
+              if (index !== -1) {
+                this.drinkingHistory[index] = {
+                  ...this.drinkingHistory[index],
+                  date: this.journalForm.date,
+                  rating: rating,
+                  notes: this.journalForm.notes,
                 };
-                this.drinkingHistory.unshift(newEntry);
-                alert("已紀錄到飲酒日誌！");
+                alert("日誌紀錄已更新！");
+              }
+            } else {
+              // 確保 ID 正確生成 (覆蓋 journalForm 中的 null)
+              const newEntry = {
+                ...this.journalForm,
+                id: Date.now(),
+                rating: rating,
+              };
+              this.drinkingHistory.unshift(newEntry);
+              alert("已紀錄到飲酒日誌！");
             }
             this.isJournalModalOpen = false;
             this.saveData();
           },
 
           deleteJournalEntry(id) {
-            if(confirm("確定要刪除這筆紀錄嗎？")) {
-                this.drinkingHistory = this.drinkingHistory.filter(h => h.id !== id);
-                this.saveData();
+            if (confirm("確定要刪除這筆紀錄嗎？")) {
+              this.drinkingHistory = this.drinkingHistory.filter(
+                (h) => h.id !== id
+              );
+              this.saveData();
             }
           },
 
           get journalStats() {
-             const total = this.drinkingHistory.length;
-             const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-             const thisWeek = this.drinkingHistory.filter(h => new Date(h.date) >= oneWeekAgo).length;
-             
-             const counts = {};
-             const baseCounts = {};
+            const total = this.drinkingHistory.length;
+            const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+            const thisWeek = this.drinkingHistory.filter(
+              (h) => new Date(h.date) >= oneWeekAgo
+            ).length;
 
-             this.drinkingHistory.forEach(h => {
-                 counts[h.recipeName] = (counts[h.recipeName] || 0) + 1;
-                 
-                 // 計算最常喝的基酒
-                 const recipe = this.recipes.find(r => r.id === h.recipeId);
-                 if (recipe && recipe.ingredients) {
-                     recipe.ingredients.forEach(ing => {
-                         const spirit = this.spiritsData.find(s => s.id === ing.id);
-                         if (spirit) baseCounts[spirit.name.split(' ')[0]] = (baseCounts[spirit.name.split(' ')[0]] || 0) + 1;
-                     });
-                 }
-             });
+            const counts = {};
+            const baseCounts = {};
 
-             const topRecipe = Object.entries(counts).sort((a,b) => b[1] - a[1])[0];
-             const topBase = Object.entries(baseCounts).sort((a,b) => b[1] - a[1])[0];
-             
-             return {
-                 total,
-                 thisWeek,
-                 favorite: topRecipe ? `${topRecipe[0]} (${topRecipe[1]}杯)` : '尚無資料',
-                 favoriteBase: topBase ? `${topBase[0]} (${topBase[1]}杯)` : '尚無資料'
-             };
+            this.drinkingHistory.forEach((h) => {
+              counts[h.recipeName] = (counts[h.recipeName] || 0) + 1;
+
+              // 計算最常喝的基酒
+              const recipe = this.recipes.find((r) => r.id === h.recipeId);
+              if (recipe && recipe.ingredients) {
+                recipe.ingredients.forEach((ing) => {
+                  const spirit = this.spiritsData.find((s) => s.id === ing.id);
+                  if (spirit)
+                    baseCounts[spirit.name.split(" ")[0]] =
+                      (baseCounts[spirit.name.split(" ")[0]] || 0) + 1;
+                });
+              }
+            });
+
+            const topRecipe = Object.entries(counts).sort(
+              (a, b) => b[1] - a[1]
+            )[0];
+            const topBase = Object.entries(baseCounts).sort(
+              (a, b) => b[1] - a[1]
+            )[0];
+
+            return {
+              total,
+              thisWeek,
+              favorite: topRecipe
+                ? `${topRecipe[0]} (${topRecipe[1]}杯)`
+                : "尚無資料",
+              favoriteBase: topBase
+                ? `${topBase[0]} (${topBase[1]}杯)`
+                : "尚無資料",
+            };
           },
 
           saveData() {
@@ -4012,7 +4143,8 @@
             if (data.myBottles) this.myBottles = data.myBottles;
             if (data.favoriteRecipes)
               this.favoriteRecipes = data.favoriteRecipes;
-            if (data.drinkingHistory) this.drinkingHistory = data.drinkingHistory;
+            if (data.drinkingHistory)
+              this.drinkingHistory = data.drinkingHistory;
 
             if (data.recipes) {
               const savedRecipes = data.recipes;
@@ -4067,8 +4199,10 @@
               myIngredients: this.myIngredients,
               myBottles: this.myBottles,
               recipes: this.recipes,
+              favoriteRecipes: this.favoriteRecipes,
               modifiers: this.modifiers,
               shoppingList: this.shoppingList,
+              drinkingHistory: this.drinkingHistory,
               barName: this.barName,
               bartenderName: this.bartenderName,
               unit: this.unit,
@@ -4100,9 +4234,12 @@
                 if (data.myIngredients) this.myIngredients = data.myIngredients;
                 if (data.myBottles) this.myBottles = data.myBottles;
                 if (data.recipes) this.recipes = data.recipes;
+                if (data.favoriteRecipes)
+                  this.favoriteRecipes = data.favoriteRecipes;
                 if (data.modifiers) this.modifiers = data.modifiers;
                 if (data.shoppingList) this.shoppingList = data.shoppingList;
-                if (data.drinkingHistory) this.drinkingHistory = data.drinkingHistory;
+                if (data.drinkingHistory)
+                  this.drinkingHistory = data.drinkingHistory;
                 if (data.barName) this.barName = data.barName;
                 if (data.bartenderName) this.bartenderName = data.bartenderName;
                 if (data.unit) this.unit = data.unit;
@@ -4195,14 +4332,22 @@
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   </head>
   <body
-    class="bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 transition-colors duration-300"
+    class="bg-gray-50 dark:bg-gray-950 font-sans text-gray-800 dark:text-gray-100 transition-colors duration-300"
     x-data="cocktailApp()"
     x-init="init()"
   >
+    <!-- Mobile Sidebar Backdrop -->
+    <div
+      x-show="isSidebarOpen"
+      @click="isSidebarOpen = false"
+      x-transition.opacity
+      class="fixed inset-0 bg-gray-900 bg-opacity-80 z-50 md:hidden backdrop-blur-sm"
+    ></div>
+
     <div class="flex min-h-screen relative">
       <!-- --- 平板/電腦版 側邊選單 --- -->
       <aside
-        class="bg-slate-900 text-white w-72 shrink-0 h-screen top-0 flex-col p-6 flex transition-all z-40 fixed md:sticky"
+        class="bg-gray-900 text-white w-72 shrink-0 h-screen top-0 flex-col p-6 flex transition-all z-50 fixed md:sticky"
         x-show="isSidebarOpen"
         x-cloak
         x-transition:enter="transition ease-out duration-300"
@@ -4270,7 +4415,7 @@
       >
         <main
           class="max-w-7xl mx-auto p-4 md:p-8 lg:p-10 pb-48 md:pb-10 transition-all duration-300"
-          :class="!isSidebarOpen ? 'md:pt-24' : ''"
+          :class="!isSidebarOpen ? 'pt-24' : ''"
         >
           <!-- === 首頁 === -->
           <div
@@ -4279,20 +4424,20 @@
             x-cloak
           >
             <div
-              class="bg-slate-900 dark:bg-slate-900 text-white rounded-[2rem] p-6 md:p-10 lg:p-16 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center gap-10"
+              class="bg-gray-900 dark:bg-gray-900 text-white rounded-3xl p-6 md:p-10 lg:p-16 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center gap-10"
             >
               <div class="relative z-10 flex-1 text-center lg:text-left">
                 <div
-                  class="bg-amber-500/10 text-amber-500 text-xs font-black px-3 py-1 rounded-full w-fit mx-auto lg:mx-0 mb-4 uppercase tracking-widest"
+                  class="bg-yellow-500 bg-opacity-10 text-yellow-500 text-xs font-black px-3 py-1 rounded-full w-fit mx-auto lg:mx-0 mb-4 uppercase tracking-widest"
                 >
                   入門指南
                 </div>
                 <h2 class="text-4xl lg:text-6xl font-black mb-6 leading-tight">
-                  探索無限可能的<br /><span class="text-amber-500"
+                  探索無限可能的<br /><span class="text-yellow-500"
                     >微醺藝術</span
                   >
                 </h2>
-                <p class="mb-8 text-slate-400 text-lg max-w-xl mx-auto lg:mx-0">
+                <p class="mb-8 text-gray-400 text-lg max-w-xl mx-auto lg:mx-0">
                   想喝一杯好的雞尾酒，不一定要走進昂貴的酒吧，我們相信最好的酒吧，就是你家的客廳。<br /><br />我們為所有熱愛生活的朋友，打造了一個最親民的調酒指南。無論你是剛買下第一支琴酒的初學者，還是追求派對驚喜的居家調酒師，這裡都有你需要的靈感。
                 </p>
                 <div
@@ -4300,13 +4445,13 @@
                 >
                   <button
                     @click="activeTab = 'bar'"
-                    class="bg-amber-500 hover:bg-amber-400 text-slate-900 font-black py-4 px-10 rounded-2xl transition-all hover:scale-105 shadow-xl shadow-amber-500/20"
+                    class="bg-yellow-500 hover:bg-yellow-400 text-gray-900 font-black py-4 px-10 rounded-2xl transition-all transform hover:scale-105 shadow-xl"
                   >
                     進入我的吧檯
                   </button>
                   <button
                     @click="activeTab = 'collection'"
-                    class="bg-slate-800 hover:bg-slate-700 text-white font-black py-4 px-10 rounded-2xl transition-all"
+                    class="bg-gray-800 hover:bg-gray-700 text-white font-black py-4 px-10 rounded-2xl transition-all"
                   >
                     管理我的酒櫃
                   </button>
@@ -4316,11 +4461,12 @@
                 class="relative w-64 lg:w-96 h-64 lg:h-96 flex items-center justify-center"
               >
                 <div
-                  class="absolute inset-0 bg-amber-500/20 blur-[100px] rounded-full"
+                  class="absolute inset-0 bg-yellow-500 bg-opacity-20 blur-3xl rounded-full"
+                  style="filter: blur(100px)"
                 ></div>
                 <i
                   data-lucide="wine"
-                  class="w-48 h-48 lg:w-64 lg:h-64 text-amber-500 relative z-10 drop-shadow-2xl"
+                  class="w-48 h-48 lg:w-64 lg:h-64 text-yellow-500 relative z-10 drop-shadow-2xl"
                 ></i>
               </div>
             </div>
@@ -4328,13 +4474,13 @@
             <!-- 我的待買清單 -->
             <div x-show="shoppingList.length > 0" class="animate-fade-in">
               <h3
-                class="text-2xl font-black mb-6 flex items-center gap-3 text-slate-800 dark:text-white"
+                class="text-2xl font-black mb-6 flex items-center gap-3 text-gray-800 dark:text-white"
               >
-                <i data-lucide="list-todo" class="text-amber-500"></i>
+                <i data-lucide="list-todo" class="text-yellow-500"></i>
                 我的待買清單
               </h3>
               <div
-                class="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-sm mb-10"
+                class="bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm mb-10"
               >
                 <div class="space-y-3">
                   <template
@@ -4342,23 +4488,23 @@
                     :key="item.id"
                   >
                     <div
-                      class="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 group transition hover:border-amber-200 dark:hover:border-amber-800"
+                      class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 group transition hover:border-yellow-200 dark:hover:border-yellow-800"
                     >
                       <div class="flex items-center gap-3">
                         <input
                           type="checkbox"
                           x-model="item.checked"
-                          class="w-5 h-5 rounded text-amber-500 focus:ring-amber-500 border-slate-300 cursor-pointer"
+                          class="w-5 h-5 rounded text-yellow-500 focus:ring-yellow-500 border-gray-300 cursor-pointer"
                           @change="saveData()"
                         />
                         <span
-                          :class="item.checked ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200 font-bold'"
+                          :class="item.checked ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200 font-bold'"
                           x-text="item.name"
                         ></span>
                       </div>
                       <button
                         @click="removeFromShoppingList(index)"
-                        class="text-slate-400 hover:text-red-500 transition p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl"
+                        class="text-gray-400 hover:text-red-500 transition p-2 hover:bg-red-50 dark:hover:bg-red-900 dark:hover:bg-opacity-30 rounded-xl"
                       >
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                       </button>
@@ -4371,34 +4517,34 @@
             <!-- 500元攻略 -->
             <div class="grid lg:grid-cols-3 gap-8">
               <div
-                class="lg:col-span-2 bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-sm"
+                class="lg:col-span-2 bg-white dark:bg-gray-900 rounded-3xl p-8 border border-gray-200 dark:border-gray-800 shadow-sm"
               >
                 <h3
-                  class="text-2xl font-black mb-6 flex items-center gap-3 text-slate-800 dark:text-white"
+                  class="text-2xl font-black mb-6 flex items-center gap-3 text-gray-800 dark:text-white"
                 >
-                  <i data-lucide="shopping-bag" class="text-amber-500"></i> 新手
+                  <i data-lucide="shopping-bag" class="text-yellow-500"></i> 新手
                   500 元採購清單
                 </h3>
                 <div class="grid sm:grid-cols-2 gap-4">
                   <template x-for="item in shopItems">
                     <div
-                      class="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 font-bold text-slate-700 dark:text-slate-200"
+                      class="flex justify-between items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 font-bold text-gray-700 dark:text-gray-200"
                     >
                       <div class="flex items-center gap-3">
                         <i
                           :data-lucide="item.icon"
-                          class="w-4 h-4 text-slate-400"
+                          class="w-4 h-4 text-gray-400"
                         ></i>
                         <span x-text="item.name"></span>
                       </div>
                       <div
-                        class="font-black text-amber-600"
+                        class="font-black text-yellow-600"
                         x-text="'$' + item.price"
                       ></div>
                     </div>
                   </template>
                   <div
-                    class="sm:col-span-2 mt-2 p-5 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900 rounded-2xl flex justify-between items-center font-black"
+                    class="sm:col-span-2 mt-2 p-5 bg-green-50 dark:bg-green-900 dark:bg-opacity-20 border border-green-100 dark:border-green-900 rounded-2xl flex justify-between items-center font-black"
                   >
                     <span class="text-green-800 dark:text-green-400"
                       >總計預算控制</span
@@ -4408,19 +4554,19 @@
                 </div>
               </div>
               <div
-                class="bg-amber-600 dark:bg-amber-700 text-white rounded-3xl p-8 flex flex-col justify-between shadow-xl"
+                class="bg-yellow-600 dark:bg-yellow-700 text-white rounded-3xl p-8 flex flex-col justify-between shadow-xl"
               >
                 <div>
                   <h3 class="text-2xl font-black mb-4 flex items-center gap-2">
                     <i data-lucide="info"></i> 學習秘訣
                   </h3>
-                  <p class="text-amber-100 font-medium leading-relaxed italic">
+                  <p class="text-yellow-100 font-medium leading-relaxed italic">
                     「冰塊」是調酒中最便宜卻也最重要的材料。超市購買的硬冰塊，能極大減少融水量，維持酒體香氣不被稀釋。
                   </p>
                 </div>
                 <button
                   @click="activeTab = 'spirits'"
-                  class="mt-6 w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl font-bold transition"
+                  class="mt-6 w-full py-3 bg-white bg-opacity-10 hover:bg-white hover:bg-opacity-20 rounded-xl font-bold transition"
                 >
                   查看基酒百科 →
                 </button>
@@ -4435,10 +4581,10 @@
             x-cloak
           >
             <div>
-              <h2 class="text-4xl font-black text-slate-900 dark:text-white">
+              <h2 class="text-4xl font-black text-gray-900 dark:text-white">
                 調酒材料
               </h2>
-              <p class="text-slate-500 mt-2 text-lg">
+              <p class="text-gray-500 mt-2 text-lg">
                 工欲善其事，必先利其器。認識這些構成微醺的靈魂元素。
               </p>
             </div>
@@ -4447,31 +4593,31 @@
               <!-- 六大基酒 Card -->
               <div
                 @click="activeTab = 'spirits'"
-                class="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
+                class="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 hover:border-yellow-400 dark:hover:border-yellow-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
               >
                 <div
                   class="absolute top-0 right-0 p-10 opacity-10 group-hover:opacity-20 transition-opacity"
                 >
-                  <i data-lucide="wine" class="w-32 h-32 text-amber-500"></i>
+                  <i data-lucide="wine" class="w-32 h-32 text-yellow-500"></i>
                 </div>
                 <div class="relative z-10">
                   <div
-                    class="w-14 h-14 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform"
+                    class="w-14 h-14 bg-yellow-100 dark:bg-yellow-900 dark:bg-opacity-30 text-yellow-600 dark:text-yellow-400 rounded-2xl flex items-center justify-center mb-6 transform group-hover:scale-110 transition-transform"
                   >
                     <i data-lucide="wine" class="w-8 h-8"></i>
                   </div>
                   <h3
-                    class="text-2xl font-black text-slate-900 dark:text-white mb-2"
+                    class="text-2xl font-black text-gray-900 dark:text-white mb-2"
                   >
                     六大基酒百科
                   </h3>
                   <p
-                    class="text-slate-500 dark:text-slate-400 font-medium mb-6"
+                    class="text-gray-500 dark:text-gray-400 font-medium mb-6"
                   >
                     琴酒、伏特加、威士忌、蘭姆酒、龍舌蘭、白蘭地。<br />探索這六位調酒世界的基石。
                   </p>
                   <span
-                    class="text-amber-600 dark:text-amber-400 font-bold flex items-center gap-2 group-hover:gap-4 transition-all"
+                    class="text-yellow-600 dark:text-yellow-400 font-bold flex items-center gap-2 group-hover:gap-4 transition-all"
                   >
                     前往探索 <i data-lucide="arrow-right" class="w-4 h-4"></i>
                   </span>
@@ -4481,7 +4627,7 @@
               <!-- 調味與裝飾 Card -->
               <div
                 @click="activeTab = 'modifiers'"
-                class="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-green-400 dark:hover:border-green-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
+                class="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 hover:border-green-400 dark:hover:border-green-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
               >
                 <div
                   class="absolute top-0 right-0 p-10 opacity-10 group-hover:opacity-20 transition-opacity"
@@ -4490,17 +4636,17 @@
                 </div>
                 <div class="relative z-10">
                   <div
-                    class="w-14 h-14 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform"
+                    class="w-14 h-14 bg-green-100 dark:bg-green-900 dark:bg-opacity-30 text-green-600 dark:text-green-400 rounded-2xl flex items-center justify-center mb-6 transform group-hover:scale-110 transition-transform"
                   >
                     <i data-lucide="leaf" class="w-8 h-8"></i>
                   </div>
                   <h3
-                    class="text-2xl font-black text-slate-900 dark:text-white mb-2"
+                    class="text-2xl font-black text-gray-900 dark:text-white mb-2"
                   >
                     調味與裝飾
                   </h3>
                   <p
-                    class="text-slate-500 dark:text-slate-400 font-medium mb-6"
+                    class="text-gray-500 dark:text-gray-400 font-medium mb-6"
                   >
                     利口酒、糖漿、果汁、苦精與裝飾物。<br />讓調酒風味與視覺更上一層樓的魔法。
                   </p>
@@ -4515,7 +4661,7 @@
               <!-- 杯具 Card -->
               <div
                 @click="activeTab = 'glassware'"
-                class="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-purple-400 dark:hover:border-purple-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
+                class="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 hover:border-purple-400 dark:hover:border-purple-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
               >
                 <div
                   class="absolute top-0 right-0 p-10 opacity-10 group-hover:opacity-20 transition-opacity"
@@ -4527,17 +4673,17 @@
                 </div>
                 <div class="relative z-10">
                   <div
-                    class="w-14 h-14 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform"
+                    class="w-14 h-14 bg-purple-100 dark:bg-purple-900 dark:bg-opacity-30 text-purple-600 dark:text-purple-400 rounded-2xl flex items-center justify-center mb-6 transform group-hover:scale-110 transition-transform"
                   >
                     <i data-lucide="martini" class="w-8 h-8"></i>
                   </div>
                   <h3
-                    class="text-2xl font-black text-slate-900 dark:text-white mb-2"
+                    class="text-2xl font-black text-gray-900 dark:text-white mb-2"
                   >
                     杯具百科
                   </h3>
                   <p
-                    class="text-slate-500 dark:text-slate-400 font-medium mb-6"
+                    class="text-gray-500 dark:text-gray-400 font-medium mb-6"
                   >
                     杯具是熱力學的控制器、香氣的擴大器，以及美學的展示台。
                   </p>
@@ -4552,7 +4698,7 @@
               <!-- 工具 Card -->
               <div
                 @click="activeTab = 'tools'"
-                class="bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
+                class="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 hover:border-blue-400 dark:hover:border-blue-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
               >
                 <div
                   class="absolute top-0 right-0 p-10 opacity-10 group-hover:opacity-20 transition-opacity"
@@ -4561,17 +4707,17 @@
                 </div>
                 <div class="relative z-10">
                   <div
-                    class="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform"
+                    class="w-14 h-14 bg-blue-100 dark:bg-blue-900 dark:bg-opacity-30 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 transform group-hover:scale-110 transition-transform"
                   >
                     <i data-lucide="hammer" class="w-8 h-8"></i>
                   </div>
                   <h3
-                    class="text-2xl font-black text-slate-900 dark:text-white mb-2"
+                    class="text-2xl font-black text-gray-900 dark:text-white mb-2"
                   >
                     必備工具
                   </h3>
                   <p
-                    class="text-slate-500 dark:text-slate-400 font-medium mb-6"
+                    class="text-gray-500 dark:text-gray-400 font-medium mb-6"
                   >
                     雪克杯、量酒器、吧叉匙。<br />工欲善其事，必先利其器。
                   </p>
@@ -4606,21 +4752,32 @@
                 @click="isAiModalOpen = true"
                 class="bg-gradient-to-br from-indigo-600 to-purple-700 text-white p-8 rounded-[2rem] shadow-lg border border-indigo-500 hover:scale-[1.02] cursor-pointer group transition-all relative overflow-hidden md:col-span-2"
               >
-                <div class="absolute top-0 right-0 p-8 opacity-20 group-hover:opacity-30 transition-opacity">
+                <div
+                  class="absolute top-0 right-0 p-8 opacity-20 group-hover:opacity-30 transition-opacity"
+                >
                   <i data-lucide="bot" class="w-48 h-48 text-white"></i>
                 </div>
                 <div class="relative z-10 flex flex-col h-full justify-between">
                   <div>
-                    <div class="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mb-4 group-hover:rotate-12 transition-transform">
-                      <i data-lucide="sparkles" class="w-6 h-6 text-yellow-300"></i>
+                    <div
+                      class="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mb-4 group-hover:rotate-12 transition-transform"
+                    >
+                      <i
+                        data-lucide="sparkles"
+                        class="w-6 h-6 text-yellow-300"
+                      ></i>
                     </div>
                     <h3 class="text-3xl font-black mb-2">AI 智能調酒師</h3>
                     <p class="text-indigo-100 font-medium text-lg max-w-md">
-                      不知道喝什麼？讓 AI 根據您目前的庫存 (清冰箱模式)，為您現場發明一杯專屬特調與故事。
+                      不知道喝什麼？讓 AI 根據您目前的庫存
+                      (清冰箱模式)，為您現場發明一杯專屬特調與故事。
                     </p>
                   </div>
-                  <div class="mt-8 flex items-center gap-2 font-bold text-yellow-300">
-                    <span>立即體驗</span> <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                  <div
+                    class="mt-8 flex items-center gap-2 font-bold text-yellow-300"
+                  >
+                    <span>立即體驗</span>
+                    <i data-lucide="arrow-right" class="w-5 h-5"></i>
                   </div>
                 </div>
               </div>
@@ -4771,19 +4928,32 @@
                 rel="noopener noreferrer"
                 class="md:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-purple-400 dark:hover:border-purple-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
               >
-                <div class="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                <div
+                  class="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity"
+                >
                   <i data-lucide="globe" class="w-32 h-32 text-purple-500"></i>
                 </div>
                 <div class="relative z-10">
-                  <div class="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-500 dark:text-purple-400 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <div
+                    class="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-500 dark:text-purple-400 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"
+                  >
                     <i data-lucide="globe" class="w-6 h-6"></i>
                   </div>
-                  <h3 class="text-2xl font-black text-slate-900 dark:text-white mb-2">IBA 官方酒譜</h3>
-                  <p class="text-slate-500 dark:text-slate-400 font-medium mb-4">
+                  <h3
+                    class="text-2xl font-black text-slate-900 dark:text-white mb-2"
+                  >
+                    IBA 官方酒譜
+                  </h3>
+                  <p
+                    class="text-slate-500 dark:text-slate-400 font-medium mb-4"
+                  >
                     前往國際調酒師協會 (IBA) 網站，探索官方認證的經典酒譜。
                   </p>
-                  <span class="text-purple-500 dark:text-purple-400 font-bold flex items-center gap-2 group-hover:gap-4 transition-all">
-                    開啟外部連結 <i data-lucide="external-link" class="w-4 h-4"></i>
+                  <span
+                    class="text-purple-500 dark:text-purple-400 font-bold flex items-center gap-2 group-hover:gap-4 transition-all"
+                  >
+                    開啟外部連結
+                    <i data-lucide="external-link" class="w-4 h-4"></i>
                   </span>
                 </div>
               </a>
@@ -4800,14 +4970,14 @@
             <div>
               <button
                 @click="activeTab = 'ingredients'"
-                class="mb-4 text-slate-500 hover:text-amber-500 font-bold flex items-center gap-1 transition"
+                class="mb-4 text-gray-500 hover:text-yellow-500 font-bold flex items-center gap-1 transition"
               >
                 <i data-lucide="arrow-left" class="w-4 h-4"></i> 返回調酒材料
               </button>
-              <h2 class="text-4xl font-black text-slate-900 dark:text-white">
+              <h2 class="text-4xl font-black text-gray-900 dark:text-white">
                 《六大基酒全書》
               </h2>
-              <p class="text-slate-500 mt-2 text-lg">
+              <p class="text-gray-500 mt-2 text-lg">
                 依照國際烈酒認證 (WSET Level 2 Spirits)
                 標準架構，並結合調酒師實務觀點所撰寫的深度解構。
               </p>
@@ -4818,7 +4988,7 @@
               <template x-for="spirit in spiritsData" :key="spirit.id">
                 <div
                   x-data="{ expanded: false }"
-                  class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-400 transition-all flex flex-col"
+                  class="bg-white dark:bg-gray-900 p-6 rounded-3xl shadow-sm border border-gray-200 dark:border-gray-800 hover:border-yellow-400 dark:hover:border-yellow-400 transition-all flex flex-col"
                 >
                   <!-- Card Header -->
                   <div class="flex items-center gap-4 mb-4">
@@ -4830,11 +5000,11 @@
                     </div>
                     <div>
                       <h3
-                        class="text-xl font-black text-slate-800 dark:text-white"
+                        class="text-xl font-black text-gray-800 dark:text-white"
                         x-text="spirit.name.split(' ')[0]"
                       ></h3>
                       <p
-                        class="text-xs text-slate-500 dark:text-slate-400 font-bold"
+                        class="text-xs text-gray-500 dark:text-gray-400 font-bold"
                         x-text="spirit.title"
                       ></p>
                     </div>
@@ -4842,7 +5012,7 @@
 
                   <!-- Intro -->
                   <div
-                    class="text-slate-600 dark:text-slate-400 text-sm leading-relaxed mb-6"
+                    class="text-gray-600 dark:text-gray-400 text-sm leading-relaxed mb-6"
                     :class="!expanded ? 'line-clamp-3' : ''"
                     x-html="spirit.intro"
                   ></div>
@@ -4851,13 +5021,13 @@
                   <div class="flex gap-3 mt-auto">
                     <button
                       @click="activeTab = 'collection'; searchQuery = spirit.name.split(' ')[0]"
-                      class="flex-1 bg-amber-500 text-slate-900 py-3 rounded-xl font-black text-sm hover:bg-amber-400 transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                      class="flex-1 bg-yellow-500 text-gray-900 py-3 rounded-xl font-black text-sm hover:bg-yellow-400 transition flex items-center justify-center gap-2 shadow-lg"
                     >
                       <i data-lucide="archive" class="w-4 h-4"></i> 查看酒櫃
                     </button>
                     <button
                       @click="expanded = !expanded"
-                      class="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 py-3 rounded-xl font-black text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center justify-center gap-2"
+                      class="flex-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 py-3 rounded-xl font-black text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition flex items-center justify-center gap-2"
                     >
                       <i
                         :data-lucide="expanded ? 'chevron-up' : 'book-open'"
@@ -4871,23 +5041,23 @@
                   <div
                     x-show="expanded"
                     x-transition
-                    class="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800 space-y-8"
+                    class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-800 space-y-8"
                   >
                     <template x-for="section in spirit.sections">
                       <div class="space-y-4">
                         <h4
-                          class="text-lg font-bold text-slate-700 dark:text-slate-300"
+                          class="text-lg font-bold text-gray-700 dark:text-gray-300"
                           x-text="section.title"
                         ></h4>
                         <p
                           x-show="section.content"
                           x-html="section.content"
-                          class="text-slate-600 dark:text-slate-400 leading-relaxed text-sm"
+                          class="text-gray-600 dark:text-gray-400 leading-relaxed text-sm"
                         ></p>
                         <p
                           x-show="section.intro"
                           x-html="section.intro"
-                          class="text-slate-600 dark:text-slate-400 leading-relaxed text-sm"
+                          class="text-gray-600 dark:text-gray-400 leading-relaxed text-sm"
                         ></p>
 
                         <!-- Points -->
@@ -4897,11 +5067,11 @@
                               class="flex flex-col md:flex-row gap-1 md:gap-3"
                             >
                               <dt
-                                class="font-bold text-amber-600 dark:text-amber-400 shrink-0 md:w-32 md:text-right"
+                                class="font-bold text-yellow-600 dark:text-yellow-400 shrink-0 md:w-32 md:text-right"
                                 x-text="point.name"
                               ></dt>
                               <dd
-                                class="text-slate-600 dark:text-slate-400 leading-relaxed md:pl-3 md:border-l-2 md:border-slate-200 dark:md:border-slate-700"
+                                class="text-gray-600 dark:text-gray-400 leading-relaxed md:pl-3 md:border-l-2 md:border-gray-200 dark:md:border-gray-700"
                                 x-html="point.desc"
                               ></dd>
                             </div>
@@ -4912,16 +5082,16 @@
                         <div x-show="section.subsections" class="space-y-4">
                           <template x-for="subsection in section.subsections">
                             <div
-                              class="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800"
+                              class="p-4 bg-gray-50 dark:bg-gray-800 dark:bg-opacity-50 rounded-xl border border-gray-200 dark:border-gray-800"
                             >
                               <h5
-                                class="text-base font-black text-slate-800 dark:text-white mb-2"
+                                class="text-base font-black text-gray-800 dark:text-white mb-2"
                                 x-text="subsection.title"
                               ></h5>
                               <p
                                 x-show="subsection.intro"
                                 x-html="subsection.intro"
-                                class="text-slate-600 dark:text-slate-400 leading-relaxed text-xs mb-2"
+                                class="text-gray-600 dark:text-gray-400 leading-relaxed text-xs mb-2"
                               ></p>
                               <dl
                                 x-show="subsection.points"
@@ -4932,11 +5102,11 @@
                                     class="flex flex-col md:flex-row gap-1 md:gap-2"
                                   >
                                     <dt
-                                      class="font-bold text-amber-600 dark:text-amber-400 shrink-0 md:w-24 md:text-right"
+                                      class="font-bold text-yellow-600 dark:text-yellow-400 shrink-0 md:w-24 md:text-right"
                                       x-text="point.name"
                                     ></dt>
                                     <dd
-                                      class="text-slate-600 dark:text-slate-400 leading-relaxed"
+                                      class="text-gray-600 dark:text-gray-400 leading-relaxed"
                                       x-html="point.desc"
                                     ></dd>
                                   </div>
@@ -4944,14 +5114,14 @@
                               </dl>
                               <div
                                 x-show="subsection.notes"
-                                class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700"
+                                class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"
                               >
                                 <h6
-                                  class="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1"
+                                  class="text-xs font-bold text-gray-500 dark:text-gray-400 mb-1"
                                   x-text="subsection.notesTitle || '註記：'"
                                 ></h6>
                                 <ul
-                                  class="list-disc list-inside space-y-1 text-xs text-slate-600 dark:text-slate-400"
+                                  class="list-disc list-inside space-y-1 text-xs text-gray-600 dark:text-gray-400"
                                 >
                                   <template x-for="note in subsection.notes">
                                     <li x-html="note"></li>
@@ -6132,10 +6302,16 @@
                 <h2 class="text-4xl font-black text-slate-900 dark:text-white">
                   我的私人酒櫃
                 </h2>
-                <div x-show="myBottles.length > 0" class="flex items-center gap-2 mt-2 text-slate-500">
-                    <i data-lucide="piggy-bank" class="w-5 h-5"></i>
-                    <span class="font-bold">總資產價值：</span>
-                    <span class="font-black text-amber-600 text-lg" x-text="'$' + totalAssetValue.toLocaleString()"></span>
+                <div
+                  x-show="myBottles.length > 0"
+                  class="flex items-center gap-2 mt-2 text-slate-500"
+                >
+                  <i data-lucide="piggy-bank" class="w-5 h-5"></i>
+                  <span class="font-bold">總資產價值：</span>
+                  <span
+                    class="font-black text-amber-600 text-lg"
+                    x-text="'$' + totalAssetValue.toLocaleString()"
+                  ></span>
                 </div>
               </div>
               <div class="flex gap-3 w-full md:w-auto">
@@ -6162,20 +6338,31 @@
             </div>
 
             <!-- 酒櫃篩選器 -->
-            <div class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center shadow-sm">
+            <div
+              class="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center shadow-sm"
+            >
               <div class="flex items-center gap-2 w-full md:w-auto">
                 <i data-lucide="filter" class="w-4 h-4 text-amber-500"></i>
-                <span class="text-xs font-black uppercase tracking-widest text-slate-400">篩選與排序</span>
+                <span
+                  class="text-xs font-black uppercase tracking-widest text-slate-400"
+                  >篩選與排序</span
+                >
               </div>
 
-              <select x-model="filterBottleType" class="bg-slate-50 dark:bg-slate-800 border-none text-sm font-bold rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-slate-700 dark:text-slate-200 w-full md:w-auto">
+              <select
+                x-model="filterBottleType"
+                class="bg-slate-50 dark:bg-slate-800 border-none text-sm font-bold rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-slate-700 dark:text-slate-200 w-full md:w-auto"
+              >
                 <option value="all">所有類型</option>
                 <template x-for="type in availableBottleTypes" :key="type.id">
-                    <option :value="type.id" x-text="type.name"></option>
+                  <option :value="type.id" x-text="type.name"></option>
                 </template>
               </select>
-              
-              <select x-model="sortBottleBy" class="bg-slate-50 dark:bg-slate-800 border-none text-sm font-bold rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-slate-700 dark:text-slate-200 w-full md:w-auto">
+
+              <select
+                x-model="sortBottleBy"
+                class="bg-slate-50 dark:bg-slate-800 border-none text-sm font-bold rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-slate-700 dark:text-slate-200 w-full md:w-auto"
+              >
                 <option value="date_desc">最新購入</option>
                 <option value="date_asc">最舊購入</option>
                 <option value="price_desc">價格 (高→低)</option>
@@ -6183,7 +6370,11 @@
                 <option value="rating_desc">評分 (高→低)</option>
               </select>
 
-               <button x-show="filterBottleType !== 'all' || sortBottleBy !== 'date_desc'" @click="filterBottleType = 'all'; sortBottleBy = 'date_desc'" class="text-xs font-bold text-red-500 hover:text-red-600 flex items-center gap-1 w-full md:w-auto justify-center md:justify-start md:ml-auto">
+              <button
+                x-show="filterBottleType !== 'all' || sortBottleBy !== 'date_desc'"
+                @click="filterBottleType = 'all'; sortBottleBy = 'date_desc'"
+                class="text-xs font-bold text-red-500 hover:text-red-600 flex items-center gap-1 w-full md:w-auto justify-center md:justify-start md:ml-auto"
+              >
                 <i data-lucide="x-circle" class="w-3 h-3"></i>
                 重置
               </button>
@@ -6263,6 +6454,21 @@
                         <i data-lucide="calendar" class="w-3 h-3"></i>
                         <span x-text="bottle.purchaseDate"></span>
                       </div>
+                      <div
+                        x-show="bottle.openDate"
+                        class="flex items-center gap-1"
+                        :class="(isPerishable(bottle.typeId) && getDaysOpened(bottle.openDate) > 30) ? 'text-red-500 font-bold' : ''"
+                      >
+                        <i data-lucide="box-select" class="w-3 h-3"></i>
+                        <span
+                          x-text="'已開 ' + getDaysOpened(bottle.openDate) + ' 天'"
+                        ></span>
+                        <i
+                          x-show="isPerishable(bottle.typeId) && getDaysOpened(bottle.openDate) > 30"
+                          data-lucide="alert-circle"
+                          class="w-3 h-3 ml-1"
+                        ></i>
+                      </div>
                       <div x-show="bottle.features" class="w-full">
                         <span
                           class="font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 px-1 rounded"
@@ -6283,7 +6489,10 @@
                           :class="bottle.remaining < 30 ? 'text-red-500' : 'text-slate-600 dark:text-slate-400'"
                         >
                           <span x-text="bottle.remaining + '%'"></span>
-                          <span class="text-slate-400 font-normal" x-text="' ≈ ' + Math.round((bottle.volume || 750) * bottle.remaining / 100) + 'ml'"></span>
+                          <span
+                            class="text-slate-400 font-normal"
+                            x-text="' ≈ ' + Math.round((bottle.volume || 750) * bottle.remaining / 100) + 'ml'"
+                          ></span>
                         </span>
                       </div>
                       <input
@@ -6635,86 +6844,164 @@
           </div>
 
           <!-- === 飲酒日誌 === -->
-          <div x-show="activeTab === 'journal'" class="space-y-8 animate-fade-in" x-cloak>
-            <h2 class="text-4xl font-black text-slate-900 dark:text-white">飲酒日誌</h2>
-            
+          <div
+            x-show="activeTab === 'journal'"
+            class="space-y-8 animate-fade-in"
+            x-cloak
+          >
+            <h2 class="text-4xl font-black text-slate-900 dark:text-white">
+              飲酒日誌
+            </h2>
+
             <!-- 統計卡片 -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
-                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
-                        <i data-lucide="wine" class="w-5 h-5"></i>
-                        <span class="font-bold text-xs uppercase tracking-widest">累積飲用</span>
-                    </div>
-                    <div class="text-4xl font-black text-slate-900 dark:text-white" x-text="journalStats.total + ' 杯'"></div>
+              <div
+                class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800"
+              >
+                <div
+                  class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400"
+                >
+                  <i data-lucide="wine" class="w-5 h-5"></i>
+                  <span class="font-bold text-xs uppercase tracking-widest"
+                    >累積飲用</span
+                  >
                 </div>
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
-                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
-                        <i data-lucide="calendar-days" class="w-5 h-5"></i>
-                        <span class="font-bold text-xs uppercase tracking-widest">本週飲用</span>
-                    </div>
-                    <div class="text-4xl font-black text-amber-500" x-text="journalStats.thisWeek + ' 杯'"></div>
+                <div
+                  class="text-4xl font-black text-slate-900 dark:text-white"
+                  x-text="journalStats.total + ' 杯'"
+                ></div>
+              </div>
+              <div
+                class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800"
+              >
+                <div
+                  class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400"
+                >
+                  <i data-lucide="calendar-days" class="w-5 h-5"></i>
+                  <span class="font-bold text-xs uppercase tracking-widest"
+                    >本週飲用</span
+                  >
                 </div>
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
-                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
-                        <i data-lucide="heart" class="w-5 h-5"></i>
-                        <span class="font-bold text-xs uppercase tracking-widest">最常喝</span>
-                    </div>
-                    <div class="text-2xl font-black text-slate-900 dark:text-white truncate" x-text="journalStats.favorite"></div>
+                <div
+                  class="text-4xl font-black text-amber-500"
+                  x-text="journalStats.thisWeek + ' 杯'"
+                ></div>
+              </div>
+              <div
+                class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800"
+              >
+                <div
+                  class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400"
+                >
+                  <i data-lucide="heart" class="w-5 h-5"></i>
+                  <span class="font-bold text-xs uppercase tracking-widest"
+                    >最常喝</span
+                  >
                 </div>
-                <div class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800">
-                    <div class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400">
-                        <i data-lucide="droplet" class="w-5 h-5"></i>
-                        <span class="font-bold text-xs uppercase tracking-widest">最愛基酒</span>
-                    </div>
-                    <div class="text-2xl font-black text-slate-900 dark:text-white truncate" x-text="journalStats.favoriteBase"></div>
+                <div
+                  class="text-2xl font-black text-slate-900 dark:text-white truncate"
+                  x-text="journalStats.favorite"
+                ></div>
+              </div>
+              <div
+                class="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800"
+              >
+                <div
+                  class="flex items-center gap-3 mb-2 text-slate-500 dark:text-slate-400"
+                >
+                  <i data-lucide="droplet" class="w-5 h-5"></i>
+                  <span class="font-bold text-xs uppercase tracking-widest"
+                    >最愛基酒</span
+                  >
                 </div>
+                <div
+                  class="text-2xl font-black text-slate-900 dark:text-white truncate"
+                  x-text="journalStats.favoriteBase"
+                ></div>
+              </div>
             </div>
 
             <!-- 時間軸 -->
-            <div class="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-200 dark:border-slate-800">
-                <h3 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-3">
-                    <i data-lucide="history" class="text-amber-500"></i> 歷史紀錄
-                </h3>
-                
-                <div x-show="drinkingHistory.length === 0" class="text-center py-10 text-slate-400">
-                    <p>尚無紀錄，快去調一杯酒吧！</p>
-                </div>
+            <div
+              class="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-200 dark:border-slate-800"
+            >
+              <h3
+                class="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-3"
+              >
+                <i data-lucide="history" class="text-amber-500"></i> 歷史紀錄
+              </h3>
 
-                <div class="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
-                    <template x-for="item in drinkingHistory" :key="item.id">
-                        <div class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                            <!-- Icon -->
-                            <div class="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-900 bg-amber-500 text-slate-900 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                                <i data-lucide="glass-water" class="w-5 h-5"></i>
-                            </div>
-                            
-                            <!-- Card -->
-                            <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
-                                <div class="flex justify-between items-start mb-2">
-                                    <div class="font-black text-lg text-slate-800 dark:text-white" x-text="item.recipeName"></div>
-                                    <div class="flex gap-2">
-                                        <button @click="editJournalEntry(item)" class="text-slate-300 hover:text-amber-500 transition">
-                                            <i data-lucide="pencil" class="w-4 h-4"></i>
-                                        </button>
-                                        <button @click="deleteJournalEntry(item.id)" class="text-slate-300 hover:text-red-500 transition">
-                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="text-xs font-bold text-slate-400 mb-3 flex items-center gap-2">
-                                    <i data-lucide="clock" class="w-3 h-3"></i>
-                                    <span x-text="new Date(item.date).toLocaleString()"></span>
-                                </div>
-                                <div class="flex items-center gap-1 mb-3">
-                                    <template x-for="i in 5">
-                                        <i data-lucide="star" class="w-3 h-3" :class="i <= item.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-600'"></i>
-                                    </template>
-                                </div>
-                                <p x-show="item.notes" class="text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900/50 p-3 rounded-xl italic" x-text="item.notes"></p>
-                            </div>
+              <div
+                x-show="drinkingHistory.length === 0"
+                class="text-center py-10 text-slate-400"
+              >
+                <p>尚無紀錄，快去調一杯酒吧！</p>
+              </div>
+
+              <div
+                class="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent"
+              >
+                <template x-for="item in drinkingHistory" :key="item.id">
+                  <div
+                    class="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active"
+                  >
+                    <!-- Icon -->
+                    <div
+                      class="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-slate-900 bg-amber-500 text-slate-900 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2"
+                    >
+                      <i data-lucide="glass-water" class="w-5 h-5"></i>
+                    </div>
+
+                    <!-- Card -->
+                    <div
+                      class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm"
+                    >
+                      <div class="flex justify-between items-start mb-2">
+                        <div
+                          class="font-black text-lg text-slate-800 dark:text-white"
+                          x-text="item.recipeName"
+                        ></div>
+                        <div class="flex gap-2">
+                          <button
+                            @click="editJournalEntry(item)"
+                            class="text-slate-300 hover:text-amber-500 transition"
+                          >
+                            <i data-lucide="pencil" class="w-4 h-4"></i>
+                          </button>
+                          <button
+                            @click="deleteJournalEntry(item.id)"
+                            class="text-slate-300 hover:text-red-500 transition"
+                          >
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                          </button>
                         </div>
-                    </template>
-                </div>
+                      </div>
+                      <div
+                        class="text-xs font-bold text-slate-400 mb-3 flex items-center gap-2"
+                      >
+                        <i data-lucide="clock" class="w-3 h-3"></i>
+                        <span
+                          x-text="new Date(item.date).toLocaleString()"
+                        ></span>
+                      </div>
+                      <div class="flex items-center gap-1 mb-3">
+                        <template x-for="i in 5">
+                          <i
+                            data-lucide="star"
+                            class="w-3 h-3"
+                            :class="i <= item.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-600'"
+                          ></i>
+                        </template>
+                      </div>
+                      <p
+                        x-show="item.notes"
+                        class="text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900/50 p-3 rounded-xl italic"
+                        x-text="item.notes"
+                      ></p>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
 
@@ -6836,23 +7123,44 @@
             </div>
 
             <!-- API 設定 -->
-            <div class="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-200 dark:border-slate-800">
-                <h3 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-3">
-                    <i data-lucide="bot" class="text-amber-500"></i> AI 設定
-                </h3>
-                <div>
-                    <label class="block text-xs font-bold text-slate-500 mb-2">Gemini API Key</label>
-                    <div class="flex gap-2">
-                        <input type="password" x-model="geminiApiKey" placeholder="輸入您的 Google Gemini API Key" class="w-full p-3 rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-slate-800 dark:text-white focus:border-amber-500 outline-none transition">
-                        <button @click="testAiConnection()" class="shrink-0 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 rounded-xl font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition flex items-center gap-2">
-                            <i data-lucide="wifi" class="w-4 h-4"></i>
-                            <span class="hidden sm:inline">測試連結</span>
-                        </button>
-                    </div>
-                    <p class="text-xs text-slate-400 mt-2">
-                        用於驅動 AI 智能調酒師功能。請至 <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-amber-500 hover:underline">Google AI Studio</a> 免費獲取。
-                    </p>
+            <div
+              class="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-200 dark:border-slate-800"
+            >
+              <h3
+                class="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-3"
+              >
+                <i data-lucide="bot" class="text-amber-500"></i> AI 設定
+              </h3>
+              <div>
+                <label class="block text-xs font-bold text-slate-500 mb-2"
+                  >Gemini API Key</label
+                >
+                <div class="flex gap-2">
+                  <input
+                    type="password"
+                    x-model="geminiApiKey"
+                    placeholder="輸入您的 Google Gemini API Key"
+                    class="w-full p-3 rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-slate-800 dark:text-white focus:border-amber-500 outline-none transition"
+                  />
+                  <button
+                    @click="testAiConnection()"
+                    class="shrink-0 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 rounded-xl font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition flex items-center gap-2"
+                  >
+                    <i data-lucide="wifi" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">測試連結</span>
+                  </button>
                 </div>
+                <p class="text-xs text-slate-400 mt-2">
+                  用於驅動 AI 智能調酒師功能。請至
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    class="text-amber-500 hover:underline"
+                    >Google AI Studio</a
+                  >
+                  免費獲取。
+                </p>
+              </div>
             </div>
 
             <!-- 偏好與外觀 -->
@@ -6984,19 +7292,19 @@
 
                 <button
                   @click="resetData()"
-                  class="p-6 rounded-2xl bg-slate-50 dark:bg-slate-800 border-2 border-slate-100 dark:border-slate-700 hover:border-red-400 dark:hover:border-red-400 transition text-left group"
+                  class="p-6 rounded-2xl bg-gray-50 dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 hover:border-red-400 dark:hover:border-red-400 transition text-left group"
                 >
                   <div
-                    class="bg-red-100 text-red-600 w-10 h-10 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition"
+                    class="bg-red-100 text-red-600 w-10 h-10 rounded-xl flex items-center justify-center mb-4 transform group-hover:scale-110 transition"
                   >
                     <i data-lucide="refresh-cw" class="w-5 h-5"></i>
                   </div>
                   <div
-                    class="font-black text-lg text-slate-800 dark:text-white mb-1"
+                    class="font-black text-lg text-gray-800 dark:text-white mb-1"
                   >
                     重置預設
                   </div>
-                  <div class="text-xs text-slate-500 dark:text-slate-400">
+                  <div class="text-xs text-gray-500 dark:text-gray-400">
                     清除所有資料並恢復原廠設定
                   </div>
                 </button>
@@ -7009,13 +7317,13 @@
 
     <!-- --- 手機版 底部導覽 --- -->
     <nav
-      class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 grid grid-cols-6 items-center px-1 py-3 z-50 shadow-2xl print:hidden"
+      class="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 grid grid-cols-7 items-center px-1 py-3 z-50 shadow-2xl print:hidden"
     >
       <template x-for="tab in navigation" :key="tab.id">
         <button
           @click="activeTab = tab.id"
           class="flex flex-col items-center gap-1.5 transition"
-          :class="(activeTab === tab.id || (tab.id === 'ingredients' && ['spirits', 'modifiers', 'tools', 'glassware'].includes(activeTab)) || (tab.id === 'laboratory' && ['recipes', 'bar', 'favorites', 'menu'].includes(activeTab))) ? 'text-amber-500 scale-110' : 'text-slate-500'"
+          :class="(activeTab === tab.id || (tab.id === 'ingredients' && ['spirits', 'modifiers', 'tools', 'glassware'].includes(activeTab)) || (tab.id === 'laboratory' && ['recipes', 'bar', 'favorites', 'menu'].includes(activeTab))) ? 'text-yellow-500 transform scale-110' : 'text-gray-500'"
         >
           <i :data-lucide="tab.icon" class="w-5 h-5"></i>
           <span
@@ -7029,20 +7337,20 @@
     <!-- --- 表單彈窗：新增收藏 --- -->
     <div
       x-show="isBottleFormOpen"
-      class="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
+      class="fixed inset-0 bg-gray-900 bg-opacity-80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
       x-cloak
     >
       <div
-        class="bg-white rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+        class="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
       >
-        <div class="p-8 bg-slate-50 border-b flex justify-between items-center">
+        <div class="p-8 bg-gray-50 border-b flex justify-between items-center">
           <h3 class="font-black text-2xl flex items-center gap-3">
-            <i data-lucide="archive" class="text-amber-500"></i>
+            <i data-lucide="archive" class="text-yellow-500"></i>
             <span x-text="editingBottleId ? '編輯酒藏' : '入庫新酒收藏'"></span>
           </h3>
           <button
             @click="isBottleFormOpen = false"
-            class="text-slate-400 hover:text-slate-600"
+            class="text-gray-400 hover:text-gray-600"
           >
             <i data-lucide="x"></i>
           </button>
@@ -7054,11 +7362,11 @@
           <div class="grid grid-cols-2 gap-6">
             <div class="col-span-2 sm:col-span-1">
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >分類</label
               >
               <select
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.typeId"
               >
                 <template x-for="ing in allIngredientsList">
@@ -7068,38 +7376,38 @@
             </div>
             <div class="col-span-2 sm:col-span-1">
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >酒名</label
               >
               <input
                 type="text"
                 required
                 placeholder="例如：坦奎瑞"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.name"
               />
             </div>
             <div class="col-span-2 sm:col-span-1">
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >品牌</label
               >
               <input
                 type="text"
                 placeholder="例如：Tanqueray"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.brand"
               />
             </div>
             <div class="col-span-2 sm:col-span-1">
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >購買地點</label
               >
               <input
                 type="text"
                 placeholder="例如：好市多"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.location"
               />
             </div>
@@ -7107,70 +7415,81 @@
           <div class="grid grid-cols-2 gap-6">
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >購入價格</label
               >
               <input
                 type="number"
                 placeholder="$"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.price"
               />
             </div>
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >購買日期</label
               >
               <input
                 type="date"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.purchaseDate"
+              />
+            </div>
+            <div>
+              <label
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
+                >開封日期 (選填)</label
+              >
+              <input
+                type="date"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
+                x-model="bottleForm.openDate"
               />
             </div>
           </div>
           <div class="grid grid-cols-2 gap-6">
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >容量 (ml)</label
               >
               <input
                 type="number"
                 placeholder="750"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.volume"
               />
             </div>
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >評價星等 (1-5)</label
               >
               <input
                 type="number"
                 min="1"
                 max="5"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="bottleForm.rating"
               />
             </div>
           </div>
           <div>
             <label
-              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
               >標籤 (逗號分隔)</label
             >
             <input
               type="text"
               placeholder="例如：清爽, 限量"
-              class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+              class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
               x-model="bottleForm.tags"
             />
           </div>
           <div>
             <label
-              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
               >初始酒量</label
             >
             <div class="flex items-center gap-4">
@@ -7179,41 +7498,41 @@
                 min="0"
                 max="100"
                 step="10"
-                class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-yellow-500"
                 x-model="bottleForm.remaining"
               />
               <span
-                class="font-black text-amber-600 w-12 text-right"
+                class="font-black text-yellow-600 w-12 text-right"
                 x-text="bottleForm.remaining + '%'"
               ></span>
             </div>
           </div>
           <div>
             <label
-              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
               >特色描述</label
             >
             <input
               type="text"
               placeholder="例如：帶有獨特的柑橘香氣"
-              class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+              class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
               x-model="bottleForm.features"
             />
           </div>
           <div>
             <label
-              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
               >風味筆記</label
             >
             <textarea
-              class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50 resize-none"
+              class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50 resize-none"
               rows="3"
               x-model="bottleForm.notes"
             ></textarea>
           </div>
           <button
             type="submit"
-            class="w-full py-5 bg-slate-900 text-white font-black rounded-2xl shadow-2xl hover:bg-slate-800 transition flex items-center justify-center gap-3"
+            class="w-full py-5 bg-gray-900 text-white font-black rounded-2xl shadow-2xl hover:bg-gray-800 transition flex items-center justify-center gap-3"
           >
             <i data-lucide="save" class="w-5 h-5"></i>
             <span x-text="editingBottleId ? '儲存變更' : '完成入庫'"></span>
@@ -7225,76 +7544,152 @@
     <!-- --- 彈窗：AI 調酒師 --- -->
     <div
       x-show="isAiModalOpen"
-      class="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
+      class="fixed inset-0 bg-gray-900 bg-opacity-90 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
       x-cloak
     >
-      <div class="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col relative border border-slate-200 dark:border-slate-700">
-        <button @click="isAiModalOpen = false" class="absolute top-6 right-6 z-10 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+      <div
+        class="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col relative border border-gray-200 dark:border-gray-700"
+      >
+        <button
+          @click="isAiModalOpen = false"
+          class="absolute top-6 right-6 z-10 p-2 bg-gray-100 dark:bg-gray-800 rounded-full text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+        >
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
 
         <!-- 初始狀態 / Loading -->
-        <div x-show="!aiResult" class="p-10 flex flex-col items-center justify-center text-center h-full min-h-[400px]">
-            <div class="w-24 h-24 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mb-6 relative">
-                <i data-lucide="bot" class="w-12 h-12 text-indigo-600 dark:text-indigo-400" :class="aiLoading ? 'animate-bounce' : ''"></i>
-                <div x-show="aiLoading" class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-            
-            <h3 class="text-2xl font-black text-slate-900 dark:text-white mb-2" x-text="aiLoading ? '正在構思酒譜...' : 'AI 智能調酒師'"></h3>
-            <p class="text-slate-500 dark:text-slate-400 mb-8 max-w-xs mx-auto" x-text="aiLoading ? 'AI 正在掃描您的庫存，並嘗試發明一杯獨一無二的調酒。' : '我會根據您目前的庫存，為您發明一杯新調酒。'"></p>
-            
-            <button @click="generateAiCocktail()" :disabled="aiLoading" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-indigo-500 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105">
-                <i data-lucide="sparkles" class="w-5 h-5"></i>
-                <span x-text="aiLoading ? '請稍候...' : '開始發明調酒'"></span>
-            </button>
+        <div
+          x-show="!aiResult"
+          class="p-10 flex flex-col items-center justify-center text-center h-full min-h-[400px]"
+        >
+          <div
+            class="w-24 h-24 bg-indigo-100 dark:bg-indigo-900 dark:bg-opacity-30 rounded-full flex items-center justify-center mb-6 relative"
+          >
+            <i
+              data-lucide="bot"
+              class="w-12 h-12 text-indigo-600 dark:text-indigo-400"
+              :class="aiLoading ? 'animate-bounce' : ''"
+            ></i>
+            <div
+              x-show="aiLoading"
+              class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"
+            ></div>
+          </div>
+
+          <h3
+            class="text-2xl font-black text-gray-900 dark:text-white mb-2"
+            x-text="aiLoading ? '正在構思酒譜...' : 'AI 智能調酒師'"
+          ></h3>
+          <p
+            class="text-gray-500 dark:text-gray-400 mb-8 max-w-xs mx-auto"
+            x-text="aiLoading ? 'AI 正在掃描您的庫存，並嘗試發明一杯獨一無二的調酒。' : '我會根據您目前的庫存，為您發明一杯新調酒。'"
+          ></p>
+
+          <div class="w-full max-w-xs mb-6" x-show="!aiLoading">
+            <label
+              class="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest"
+              >想喝什麼口味？(選填)</label
+            >
+            <input
+              type="text"
+              x-model="aiFlavorInput"
+              placeholder="例如：酸甜、氣泡感、不要太烈..."
+              class="w-full p-3 rounded-xl border-2 border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-bold text-gray-800 dark:text-white focus:border-indigo-500 outline-none transition text-center"
+            />
+          </div>
+
+          <button
+            @click="generateAiCocktail()"
+            :disabled="aiLoading"
+            class="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-indigo-500 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
+          >
+            <i data-lucide="sparkles" class="w-5 h-5"></i>
+            <span x-text="aiLoading ? '請稍候...' : '開始發明調酒'"></span>
+          </button>
         </div>
 
         <!-- 結果顯示 -->
         <div x-show="aiResult" class="flex flex-col h-full">
-            <div class="p-8 overflow-y-auto custom-scrollbar flex-1">
-                <div class="flex items-center gap-3 mb-6">
-                    <div class="p-3 bg-indigo-100 text-indigo-600 rounded-2xl">
-                        <i data-lucide="sparkles" class="w-8 h-8"></i>
-                    </div>
-                    <div>
-                        <div class="text-xs font-black text-indigo-400 uppercase tracking-widest">AI Generated</div>
-                        <h3 class="text-3xl font-black text-slate-900 dark:text-white" x-text="aiResult?.name"></h3>
-                    </div>
+          <div class="p-8 overflow-y-auto custom-scrollbar flex-1">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="p-3 bg-indigo-100 text-indigo-600 rounded-2xl">
+                <i data-lucide="sparkles" class="w-8 h-8"></i>
+              </div>
+              <div>
+                <div
+                  class="text-xs font-black text-indigo-400 uppercase tracking-widest"
+                >
+                  AI Generated
                 </div>
-
-                <p class="text-lg font-bold text-indigo-600 dark:text-indigo-400 mb-2" x-text="aiResult?.flavor"></p>
-                <p class="text-sm text-slate-600 dark:text-slate-300 italic mb-6 bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700" x-text="aiResult?.features"></p>
-
-                <!-- Radar Chart for AI Result -->
-                <div class="mb-6 flex justify-center" x-show="aiResult?.profile">
-                    <div class="relative w-48 h-48">
-                        <svg viewBox="0 0 200 200" class="w-full h-full">
-                            <g class="text-slate-200 dark:text-slate-700 stroke-current stroke-1 fill-none">
-                                <polygon :points="getRadarGrid(5)" /><polygon :points="getRadarGrid(3)" /><polygon :points="getRadarGrid(1)" />
-                            </g>
-                            <polygon :points="getRadarPath(aiResult?.profile)" class="fill-indigo-500/50 stroke-indigo-500 stroke-2" />
-                        </svg>
-                    </div>
-                </div>
-
-                <div class="space-y-4 mb-6">
-                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest">材料</h4>
-                    <ul class="space-y-2">
-                        <template x-for="ing in aiResult?.ingredients">
-                            <li class="flex justify-between text-sm font-bold text-slate-700 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2">
-                                <span x-text="ing.name"></span>
-                                <span x-text="ing.amount" class="text-slate-500"></span>
-                            </li>
-                        </template>
-                    </ul>
-                </div>
+                <h3
+                   class="text-3xl font-black text-gray-900 dark:text-white"
+                  x-text="aiResult?.name"
+                ></h3>
+              </div>
             </div>
-            <div class="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex gap-4 shrink-0">
-                <button @click="generateAiCocktail()" class="flex-1 py-3 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition">不滿意，重來</button>
-                <button @click="saveAiRecipe()" class="flex-[2] py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-500 transition flex items-center justify-center gap-2">
-                    <i data-lucide="save" class="w-4 h-4"></i> 收藏這份酒譜
-                </button>
+
+            <p
+              class="text-lg font-bold text-indigo-600 dark:text-indigo-400 mb-2"
+              x-text="aiResult?.flavor"
+            ></p>
+            <p
+              class="text-sm text-gray-600 dark:text-gray-300 italic mb-6 bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700"
+              x-text="aiResult?.features"
+            ></p>
+
+            <!-- Radar Chart for AI Result -->
+            <div class="mb-6 flex justify-center" x-show="aiResult?.profile">
+              <div class="relative w-48 h-48">
+                <svg viewBox="0 0 200 200" class="w-full h-full">
+                  <g
+                    class="text-gray-200 dark:text-gray-700 stroke-current stroke-1 fill-none"
+                  >
+                    <polygon :points="getRadarGrid(5)" />
+                    <polygon :points="getRadarGrid(3)" />
+                    <polygon :points="getRadarGrid(1)" />
+                  </g>
+                  <polygon
+                    :points="getRadarPath(aiResult?.profile)"
+                    class="fill-indigo-500/50 stroke-indigo-500 stroke-2"
+                  />
+                </svg>
+              </div>
             </div>
+
+            <div class="space-y-4 mb-6">
+              <h4
+                class="text-xs font-black text-gray-400 uppercase tracking-widest"
+              >
+                材料
+              </h4>
+              <ul class="space-y-2">
+                <template x-for="ing in aiResult?.ingredients">
+                  <li
+                    class="flex justify-between text-sm font-bold text-gray-700 dark:text-gray-200 border-b border-gray-100 dark:border-gray-800 pb-2"
+                  >
+                    <span x-text="ing.name"></span>
+                    <span x-text="ing.amount" class="text-gray-500"></span>
+                  </li>
+                </template>
+              </ul>
+            </div>
+          </div>
+          <div
+            class="p-6 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex gap-4 shrink-0"
+          >
+            <button
+              @click="generateAiCocktail()"
+              class="flex-1 py-3 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+            >
+              不滿意，重來
+            </button>
+            <button
+              @click="saveAiRecipe()"
+              class="flex-[2] py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-500 transition flex items-center justify-center gap-2"
+            >
+              <i data-lucide="save" class="w-4 h-4"></i> 收藏這份酒譜
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -7302,19 +7697,19 @@
     <!-- --- 表單彈窗：新增調味 --- -->
     <div
       x-show="isModifierFormOpen"
-      class="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
+      class="fixed inset-0 bg-gray-900 bg-opacity-80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
       x-cloak
     >
       <div
-        class="bg-white rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden flex flex-col"
+        class="bg-white rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col"
       >
-        <div class="p-8 bg-slate-50 border-b flex justify-between items-center">
+        <div class="p-8 bg-gray-50 border-b flex justify-between items-center">
           <h3 class="font-black text-2xl flex items-center gap-3">
-            <i data-lucide="leaf" class="text-amber-500"></i> 新增自訂調味
+            <i data-lucide="leaf" class="text-yellow-500"></i> 新增自訂調味
           </h3>
           <button
             @click="isModifierFormOpen = false"
-            class="text-slate-400 hover:text-slate-600"
+            class="text-gray-400 hover:text-gray-600"
           >
             <i data-lucide="x"></i>
           </button>
@@ -7322,11 +7717,11 @@
         <form @submit.prevent="saveModifier()" class="p-8 space-y-6">
           <div>
             <label
-              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
               >分類</label
             >
             <select
-              class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+              class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
               x-model.number="modifierForm.categoryIndex"
             >
               <template x-for="(cat, index) in modifiers" :key="index">
@@ -7336,46 +7731,46 @@
           </div>
           <div>
             <label
-              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
               >名稱</label
             >
             <input
               type="text"
               required
               placeholder="例如：接骨木糖漿"
-              class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+              class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
               x-model="modifierForm.name"
             />
           </div>
           <div class="grid grid-cols-2 gap-6">
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >標籤 (Tag)</label
               >
               <input
                 type="text"
                 placeholder="例如：花香"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="modifierForm.tag"
               />
             </div>
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >描述</label
               >
               <input
                 type="text"
                 placeholder="簡短描述風味"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="modifierForm.desc"
               />
             </div>
           </div>
           <button
             type="submit"
-            class="w-full py-5 bg-slate-900 text-white font-black rounded-2xl shadow-2xl hover:bg-slate-800 transition flex items-center justify-center gap-3"
+            class="w-full py-5 bg-gray-900 text-white font-black rounded-2xl shadow-2xl hover:bg-gray-800 transition flex items-center justify-center gap-3"
           >
             <i data-lucide="plus-circle" class="w-5 h-5"></i> 加入資料庫
           </button>
@@ -7386,22 +7781,22 @@
     <!-- --- 表單彈窗：新增酒譜 --- -->
     <div
       x-show="isRecipeFormOpen"
-      class="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
+      class="fixed inset-0 bg-gray-900 bg-opacity-80 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
       x-cloak
     >
       <div
-        class="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+        class="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
       >
         <div
-          class="p-8 bg-slate-50 border-b flex justify-between items-center shrink-0"
+          class="p-8 bg-gray-50 border-b flex justify-between items-center shrink-0"
         >
           <h3 class="font-black text-2xl flex items-center gap-3">
-            <i data-lucide="book-open" class="text-amber-500"></i>
+            <i data-lucide="book-open" class="text-yellow-500"></i>
             <span x-text="editingRecipeId ? '編輯酒譜' : '新增自創酒譜'"></span>
           </h3>
           <button
             @click="isRecipeFormOpen = false"
-            class="text-slate-400 hover:text-slate-600"
+            class="text-gray-400 hover:text-gray-600"
           >
             <i data-lucide="x"></i>
           </button>
@@ -7413,26 +7808,26 @@
           <div class="grid grid-cols-2 gap-6">
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >酒譜名稱</label
               >
               <input
                 type="text"
                 required
                 placeholder="例如：特製水果茶酒"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="recipeForm.name"
               />
             </div>
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >分類</label
               >
               <input
                 type="text"
                 placeholder="例如：長飲型 (Long Drink)"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="recipeForm.category"
               />
             </div>
@@ -7441,19 +7836,19 @@
           <div class="grid grid-cols-2 gap-6">
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >酒精度 (ABV)</label
               >
               <input
                 type="text"
                 placeholder="例如：15%"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="recipeForm.abv"
               />
             </div>
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >難易度 (1-5)</label
               >
               <div class="flex items-center gap-4 h-[46px]">
@@ -7461,11 +7856,11 @@
                   type="range"
                   min="1"
                   max="5"
-                  class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-yellow-500"
                   x-model="recipeForm.difficulty"
                 />
                 <span
-                  class="font-black text-amber-600 w-8 text-right"
+                  class="font-black text-yellow-600 w-8 text-right"
                   x-text="recipeForm.difficulty"
                 ></span>
               </div>
@@ -7475,25 +7870,25 @@
           <div class="grid grid-cols-2 gap-6">
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >風味描述</label
               >
               <input
                 type="text"
                 placeholder="例如：酸甜、果香濃郁"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="recipeForm.flavor"
               />
             </div>
             <div>
               <label
-                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2"
                 >標籤 (逗號分隔)</label
               >
               <input
                 type="text"
                 placeholder="例如：經典, 派對"
-                class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                class="w-full p-3 rounded-2xl border-2 border-gray-100 font-bold text-sm bg-gray-50"
                 x-model="recipeForm.tags"
               />
             </div>
@@ -7501,34 +7896,98 @@
 
           <div class="grid grid-cols-2 gap-6">
             <div class="col-span-2">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">風味輪廓 (1-5分)</label>
-                <div class="grid grid-cols-1 sm:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-2xl border-2 border-slate-100">
-                    <div class="text-center">
-                        <label class="block text-xs font-bold text-slate-600 mb-1">甜度</label>
-                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.sweet" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-pink-500">
-                        <div class="text-xs font-black text-pink-500 mt-1" x-text="recipeForm.profile.sweet"></div>
-                    </div>
-                    <div class="text-center">
-                        <label class="block text-xs font-bold text-slate-600 mb-1">酸度</label>
-                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.sour" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-yellow-500">
-                        <div class="text-xs font-black text-yellow-500 mt-1" x-text="recipeForm.profile.sour"></div>
-                    </div>
-                    <div class="text-center">
-                        <label class="block text-xs font-bold text-slate-600 mb-1">苦度</label>
-                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.bitter" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-700">
-                        <div class="text-xs font-black text-green-700 mt-1" x-text="recipeForm.profile.bitter"></div>
-                    </div>
-                    <div class="text-center">
-                        <label class="block text-xs font-bold text-slate-600 mb-1">酒精感</label>
-                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.boozy" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-red-600">
-                        <div class="text-xs font-black text-red-600 mt-1" x-text="recipeForm.profile.boozy"></div>
-                    </div>
-                    <div class="text-center">
-                        <label class="block text-xs font-bold text-slate-600 mb-1">複雜度</label>
-                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.complex" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600">
-                        <div class="text-xs font-black text-purple-600 mt-1" x-text="recipeForm.profile.complex"></div>
-                    </div>
+              <label
+                class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4"
+                >風味輪廓 (1-5分)</label
+              >
+              <div
+                class="grid grid-cols-1 sm:grid-cols-5 gap-4 bg-gray-50 p-4 rounded-2xl border-2 border-gray-100"
+              >
+                <div class="text-center">
+                    >甜度</label
+                  >
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    x-model="recipeForm.profile.sweet"
+                    class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                  />
+                  <div
+                    class="text-xs font-black text-pink-500 mt-1"
+                    x-text="recipeForm.profile.sweet"
+                  ></div>
                 </div>
+                <div class="text-center">
+                  <label class="block text-xs font-bold text-slate-600 mb-1"
+                    >酸度</label
+                  >
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    x-model="recipeForm.profile.sour"
+                    class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                  />
+                  <div
+                    class="text-xs font-black text-yellow-500 mt-1"
+                    x-text="recipeForm.profile.sour"
+                  ></div>
+                </div>
+                <div class="text-center">
+                  <label class="block text-xs font-bold text-slate-600 mb-1"
+                    >苦度</label
+                  >
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    x-model="recipeForm.profile.bitter"
+                    class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-700"
+                  />
+                  <div
+                    class="text-xs font-black text-green-700 mt-1"
+                    x-text="recipeForm.profile.bitter"
+                  ></div>
+                </div>
+                <div class="text-center">
+                  <label class="block text-xs font-bold text-slate-600 mb-1"
+                    >酒精感</label
+                  >
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    x-model="recipeForm.profile.boozy"
+                    class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-red-600"
+                  />
+                  <div
+                    class="text-xs font-black text-red-600 mt-1"
+                    x-text="recipeForm.profile.boozy"
+                  ></div>
+                </div>
+                <div class="text-center">
+                  <label class="block text-xs font-bold text-slate-600 mb-1"
+                    >複雜度</label
+                  >
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    step="1"
+                    x-model="recipeForm.profile.complex"
+                    class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                  />
+                  <div
+                    class="text-xs font-black text-purple-600 mt-1"
+                    x-text="recipeForm.profile.complex"
+                  ></div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -7746,8 +8205,10 @@
             </div>
             <div class="flex items-center gap-1">
               <i data-lucide="coins" class="w-3 h-3 text-slate-400"></i>
-              <span class="text-slate-500 dark:text-slate-400" 
-                    x-text="'約 $' + estimateCost(selectedRecipe)">
+              <span
+                class="text-slate-500 dark:text-slate-400"
+                x-text="'約 $' + estimateCost(selectedRecipe)"
+              >
               </span>
             </div>
             <div class="flex items-center gap-1">
@@ -7770,36 +8231,49 @@
           </div>
 
           <!-- Flavor Profile Radar Chart -->
-          <div class="mb-8 flex flex-col items-center" x-show="selectedRecipe.profile">
+          <div
+            class="mb-8 flex flex-col items-center"
+            x-show="selectedRecipe.profile"
+          >
             <div class="relative w-64 h-64">
-                <svg viewBox="0 0 200 200" class="w-full h-full drop-shadow-xl">
-                    <!-- Background Grid -->
-                    <g class="text-slate-200 dark:text-slate-700 stroke-current stroke-1 fill-none">
-                        <polygon :points="getRadarGrid(5)" />
-                        <polygon :points="getRadarGrid(4)" />
-                        <polygon :points="getRadarGrid(3)" />
-                        <polygon :points="getRadarGrid(2)" />
-                        <polygon :points="getRadarGrid(1)" />
-                    </g>
-                    <!-- Axes -->
-                    <g class="text-slate-200 dark:text-slate-700 stroke-current stroke-1">
-                        <line x1="100" y1="100" x2="100" y2="20" />
-                        <line x1="100" y1="100" x2="176" y2="75" />
-                        <line x1="100" y1="100" x2="147" y2="165" />
-                        <line x1="100" y1="100" x2="53" y2="165" />
-                        <line x1="100" y1="100" x2="24" y2="75" />
-                    </g>
-                    <!-- Data Polygon -->
-                    <polygon :points="getRadarPath(selectedRecipe.profile)" class="fill-amber-500/50 stroke-amber-500 stroke-2" />
-                    <!-- Labels -->
-                    <g class="text-[10px] font-black fill-slate-500 dark:fill-slate-400 text-center" style="text-anchor: middle; dominant-baseline: middle;">
-                        <text x="100" y="10">甜度</text>
-                        <text x="190" y="75">酸度</text>
-                        <text x="160" y="180">苦度</text>
-                        <text x="40" y="180">酒精感</text>
-                        <text x="10" y="75">複雜度</text>
-                    </g>
-                </svg>
+              <svg viewBox="0 0 200 200" class="w-full h-full drop-shadow-xl">
+                <!-- Background Grid -->
+                <g
+                  class="text-slate-200 dark:text-slate-700 stroke-current stroke-1 fill-none"
+                >
+                  <polygon :points="getRadarGrid(5)" />
+                  <polygon :points="getRadarGrid(4)" />
+                  <polygon :points="getRadarGrid(3)" />
+                  <polygon :points="getRadarGrid(2)" />
+                  <polygon :points="getRadarGrid(1)" />
+                </g>
+                <!-- Axes -->
+                <g
+                  class="text-slate-200 dark:text-slate-700 stroke-current stroke-1"
+                >
+                  <line x1="100" y1="100" x2="100" y2="20" />
+                  <line x1="100" y1="100" x2="176" y2="75" />
+                  <line x1="100" y1="100" x2="147" y2="165" />
+                  <line x1="100" y1="100" x2="53" y2="165" />
+                  <line x1="100" y1="100" x2="24" y2="75" />
+                </g>
+                <!-- Data Polygon -->
+                <polygon
+                  :points="getRadarPath(selectedRecipe.profile)"
+                  class="fill-amber-500/50 stroke-amber-500 stroke-2"
+                />
+                <!-- Labels -->
+                <g
+                  class="text-[10px] font-black fill-slate-500 dark:fill-slate-400 text-center"
+                  style="text-anchor: middle; dominant-baseline: middle"
+                >
+                  <text x="100" y="10">甜度</text>
+                  <text x="190" y="75">酸度</text>
+                  <text x="160" y="180">苦度</text>
+                  <text x="40" y="180">酒精感</text>
+                  <text x="10" y="75">複雜度</text>
+                </g>
+              </svg>
             </div>
             <p class="text-xs text-slate-400 font-bold mt-2">風味輪廓分析</p>
           </div>
@@ -7821,51 +8295,72 @@
                 材料清單
               </h4>
               <div class="flex items-center gap-2">
-                <button 
-                    @click="toggleBatchMode()"
-                    class="text-xs font-bold px-3 py-1.5 rounded-lg border transition flex items-center gap-1"
-                    :class="batchMode ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800' : 'bg-slate-100 text-slate-500 border-transparent dark:bg-slate-800 dark:text-slate-400'"
-                    title="派對總量計算機"
+                <button
+                  @click="toggleBatchMode()"
+                  class="text-xs font-bold px-3 py-1.5 rounded-lg border transition flex items-center gap-1"
+                  :class="batchMode ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800' : 'bg-slate-100 text-slate-500 border-transparent dark:bg-slate-800 dark:text-slate-400'"
+                  title="派對總量計算機"
                 >
-                    <i data-lucide="calculator" class="w-3 h-3"></i>
-                    <span x-show="batchMode">派對模式</span>
+                  <i data-lucide="calculator" class="w-3 h-3"></i>
+                  <span x-show="batchMode">派對模式</span>
                 </button>
-                <div x-show="!batchMode" class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                    <button
+                <div
+                  x-show="!batchMode"
+                  class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1"
+                >
+                  <button
                     @click="currentScale = 1"
                     :class="currentScale === 1 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
                     class="px-3 py-1 rounded-md text-xs font-bold transition"
-                    >
+                  >
                     x1
-                    </button>
-                    <button
+                  </button>
+                  <button
                     @click="currentScale = 2"
                     :class="currentScale === 2 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
                     class="px-3 py-1 rounded-md text-xs font-bold transition"
-                    >
+                  >
                     x2
-                    </button>
-                    <button
+                  </button>
+                  <button
                     @click="currentScale = 4"
                     :class="currentScale === 4 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
                     class="px-3 py-1 rounded-md text-xs font-bold transition"
-                    >
+                  >
                     x4
-                    </button>
+                  </button>
                 </div>
               </div>
             </div>
-            
+
             <!-- Batch Calculator Input -->
-            <div x-show="batchMode" class="mb-4 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-xl border border-amber-100 dark:border-amber-900/30 flex items-center gap-4 animate-fade-in">
-                <div class="flex-1">
-                    <label class="text-[10px] font-black text-amber-600/70 dark:text-amber-400/70 uppercase tracking-widest block mb-1">預計總量 (ml)</label>
-                    <input type="number" x-model="targetVolume" @input="updateBatchScale()" class="w-full bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 text-sm font-bold text-amber-700 dark:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <div
+              x-show="batchMode"
+              class="mb-4 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-xl border border-amber-100 dark:border-amber-900/30 flex items-center gap-4 animate-fade-in"
+            >
+              <div class="flex-1">
+                <label
+                  class="text-[10px] font-black text-amber-600/70 dark:text-amber-400/70 uppercase tracking-widest block mb-1"
+                  >預計總量 (ml)</label
+                >
+                <input
+                  type="number"
+                  x-model="targetVolume"
+                  @input="updateBatchScale()"
+                  class="w-full bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 text-sm font-bold text-amber-700 dark:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div class="text-right">
+                <div
+                  class="text-[10px] font-black text-amber-600/70 dark:text-amber-400/70 uppercase tracking-widest mb-1"
+                >
+                  放大倍率
                 </div>
-                <div class="text-right">
-                    <div class="text-[10px] font-black text-amber-600/70 dark:text-amber-400/70 uppercase tracking-widest mb-1">放大倍率</div>
-                    <div class="text-xl font-black text-amber-600 dark:text-amber-400" x-text="'x' + currentScale.toFixed(1)"></div>
-                </div>
+                <div
+                  class="text-xl font-black text-amber-600 dark:text-amber-400"
+                  x-text="'x' + currentScale.toFixed(1)"
+                ></div>
+              </div>
             </div>
 
             <div class="grid grid-cols-2 gap-3">
@@ -7986,11 +8481,22 @@
                   @click="noteForm.rating = (noteForm.rating === i ? 0 : i)"
                   class="transition hover:scale-110 focus:outline-none"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
-                    class="w-8 h-8" 
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="w-8 h-8"
                     :class="i <= noteForm.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-300 dark:text-slate-600'"
                   >
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    <polygon
+                      points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                    ></polygon>
                   </svg>
                 </button>
               </template>
@@ -8051,7 +8557,8 @@
           <h3
             class="font-black text-2xl flex items-center gap-3 text-slate-900 dark:text-white"
           >
-            <i data-lucide="calendar-plus" class="text-green-500"></i> <span x-text="journalForm.id ? '編輯紀錄' : '紀錄一杯'"></span>
+            <i data-lucide="calendar-plus" class="text-green-500"></i>
+            <span x-text="journalForm.id ? '編輯紀錄' : '紀錄一杯'"></span>
           </h3>
           <button
             @click="isJournalModalOpen = false"
@@ -8062,43 +8569,83 @@
         </div>
         <form @submit.prevent="saveJournalEntry()" class="p-8 space-y-6">
           <div class="text-center mb-4">
-            <h4 class="text-xl font-black text-slate-800 dark:text-white" x-text="journalForm.recipeName"></h4>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">紀錄美好的微醺時刻</p>
-          </div>
-          
-          <div>
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">飲用時間</label>
-            <input type="datetime-local" required class="w-full p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-slate-800 dark:text-white" x-model="journalForm.date">
+            <h4
+              class="text-xl font-black text-slate-800 dark:text-white"
+              x-text="journalForm.recipeName"
+            ></h4>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              紀錄美好的微醺時刻
+            </p>
           </div>
 
           <div>
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">本次評分</label>
+            <label
+              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              >飲用時間</label
+            >
+            <input
+              type="datetime-local"
+              required
+              class="w-full p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-slate-800 dark:text-white"
+              x-model="journalForm.date"
+            />
+          </div>
+
+          <div>
+            <label
+              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              >本次評分</label
+            >
             <div class="flex gap-2">
-               <template x-for="i in 5">
-                <button type="button" @click="journalForm.rating = (journalForm.rating === i ? 0 : i)" class="focus:outline-none transition hover:scale-110">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" 
-                    class="w-8 h-8" 
+              <template x-for="i in 5">
+                <button
+                  type="button"
+                  @click="journalForm.rating = (journalForm.rating === i ? 0 : i)"
+                  class="focus:outline-none transition hover:scale-110"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="w-8 h-8"
                     :class="i <= journalForm.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200 dark:text-slate-700'"
                   >
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    <polygon
+                      points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                    ></polygon>
                   </svg>
                 </button>
-               </template>
+              </template>
             </div>
           </div>
 
           <div>
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">品飲筆記 (選填)</label>
-            <textarea placeholder="這次的口感如何？太酸？太甜？還是完美？" class="w-full p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium text-sm resize-none h-24" x-model="journalForm.notes"></textarea>
+            <label
+              class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+              >品飲筆記 (選填)</label
+            >
+            <textarea
+              placeholder="這次的口感如何？太酸？太甜？還是完美？"
+              class="w-full p-3 rounded-2xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium text-sm resize-none h-24"
+              x-model="journalForm.notes"
+            ></textarea>
           </div>
 
-          <button type="submit" class="w-full py-4 bg-green-500 text-white font-black rounded-2xl shadow-lg hover:bg-green-400 transition flex items-center justify-center gap-2">
-            <i data-lucide="check" class="w-5 h-5"></i> <span x-text="journalForm.id ? '更新紀錄' : '儲存紀錄'"></span>
+          <button
+            type="submit"
+            class="w-full py-4 bg-green-500 text-white font-black rounded-2xl shadow-lg hover:bg-green-400 transition flex items-center justify-center gap-2"
+          >
+            <i data-lucide="check" class="w-5 h-5"></i>
+            <span x-text="journalForm.id ? '更新紀錄' : '儲存紀錄'"></span>
           </button>
         </form>
       </div>
     </div>
-  </body>
-</html>
   </body>
 </html>
