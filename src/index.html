@@ -248,6 +248,7 @@
           isAiModalOpen: false,
           aiLoading: false,
           aiResult: null,
+          aiWeather: 'random',
 
           // 表單資料
           bottleForm: {
@@ -3605,6 +3606,11 @@
             const inventory = this.myIngredients.map(id => this.getIngredientName(id)).join(', ');
             const specificBottles = this.myBottles.map(b => `${b.name} (${this.getIngredientName(b.typeId)})`).join(', ');
             
+            let weatherContext = "";
+            if (this.aiWeather !== 'random') {
+                weatherContext = `Current Weather/Vibe: ${this.aiWeather}. Please design the cocktail to perfectly suit this weather (e.g., refreshing/fizzy for hot weather, warming/boozy for cold weather, comforting for rainy days).`;
+            }
+
             const prompt = `
               Role: World Class Mixologist.
               Task: Invent a NEW, unique cocktail recipe based on the user's available inventory.
@@ -3612,6 +3618,7 @@
               User's Inventory (Ingredients): ${inventory}
               User's Specific Bottles: ${specificBottles}
               (Assume basic pantry items like Sugar, Water, Ice, Simple Syrup are available).
+              ${weatherContext}
 
               Requirements:
               1. The cocktail must be drinkable and balanced.
@@ -3699,9 +3706,10 @@
             };
 
             this.recipes.push(newRecipe);
+            this.favoriteRecipes.push(newRecipe.id);
             this.isAiModalOpen = false;
             this.aiResult = null;
-            alert("已將 AI 特調加入酒譜庫！");
+            alert("已將 AI 特調加入酒譜庫並設為最愛！");
             this.activeTab = 'recipes';
           },
 
@@ -6641,58 +6649,48 @@
               </div>
 
               <div
-                class="max-w-2xl mx-auto bg-white dark:bg-slate-900 p-6 md:p-10 lg:p-16 rounded-lg shadow-2xl print:shadow-none print:p-0"
+                class="max-w-3xl mx-auto bg-white dark:bg-slate-900 p-4 md:p-8 rounded-lg shadow-2xl print:shadow-none print:w-full print:max-w-none print:p-0"
               >
-                <div
-                  class="text-center border-b-2 border-dashed border-slate-300 dark:border-slate-700 pb-8 mb-8"
-                >
-                  <p
-                    class="text-sm font-bold tracking-widest uppercase text-amber-600"
-                  >
-                    Today's Special
-                  </p>
-                  <h2
-                    class="text-4xl font-black text-slate-900 dark:text-white mt-2"
-                    x-text="barName"
-                  ></h2>
-                  <p class="text-slate-400 mt-1" x-text="bartenderName"></p>
-                </div>
+                <!-- Menu Card Frame -->
+                <div class="border-4 border-double border-slate-800 dark:border-slate-600 p-8 md:p-12 print:border-black print:p-8 min-h-[800px] relative bg-white dark:bg-slate-900">
+                    
+                    <!-- Header -->
+                    <div class="text-center mb-12">
+                        <div class="inline-block border-b-2 border-amber-500 pb-2 mb-4">
+                            <p class="text-xs font-black tracking-[0.3em] uppercase text-amber-600 dark:text-amber-500">
+                                Today's Special
+                            </p>
+                        </div>
+                        <h2 class="text-5xl font-black text-slate-900 dark:text-white mb-4 font-serif tracking-tight" x-text="barName"></h2>
+                        <p class="text-slate-500 dark:text-slate-400 font-medium italic text-lg" x-text="'— ' + bartenderName + ' —'"></p>
+                    </div>
 
-                <div class="grid md:grid-cols-2 gap-x-12 gap-y-8">
-                  <template
-                    x-for="recipe in generatedMenuList"
-                    :key="recipe.id"
-                  >
-                    <button
-                      @click="openRecipeDetail(recipe)"
-                      class="text-left p-4 -m-4 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-                    >
-                      <div class="space-y-1">
-                        <h3
-                          class="text-xl font-black text-slate-800 dark:text-white"
-                          x-text="recipe.name"
-                        ></h3>
-                        <p
-                          class="text-sm text-amber-700 dark:text-amber-500 font-bold"
-                          x-text="recipe.flavor"
-                        ></p>
-                        <p
-                          class="text-xs text-slate-500 dark:text-slate-400 pt-1"
-                        >
-                          <template x-for="(ing, index) in recipe.ingredients">
-                            <span
-                              ><span x-text="getIngredientName(ing.id)"></span
-                              ><span
-                                x-show="index < recipe.ingredients.length - 1"
-                              >
-                                /
-                              </span></span
-                            >
-                          </template>
+                    <!-- Menu Items -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-16 gap-y-10">
+                        <template x-for="recipe in generatedMenuList" :key="recipe.id">
+                             <button @click="openRecipeDetail(recipe)" class="text-center md:text-left group w-full focus:outline-none">
+                                <div class="flex flex-col md:flex-row md:items-baseline md:justify-between border-b border-slate-200 dark:border-slate-700 pb-2 mb-2 border-dashed group-hover:border-amber-400 transition-colors">
+                                    <h3 class="text-xl font-black text-slate-800 dark:text-white group-hover:text-amber-600 transition-colors" x-text="recipe.name"></h3>
+                                </div>
+                                <p class="text-sm font-bold text-amber-700 dark:text-amber-500 mb-1 italic" x-text="recipe.flavor"></p>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                                    <template x-for="(ing, index) in recipe.ingredients">
+                                        <span>
+                                            <span x-text="getIngredientName(ing.id)"></span>
+                                            <span x-show="index < recipe.ingredients.length - 1"> • </span>
+                                        </span>
+                                    </template>
+                                </p>
+                             </button>
+                        </template>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="mt-16 pt-8 text-center border-t border-slate-100 dark:border-slate-800">
+                        <p class="text-[10px] text-slate-400 uppercase tracking-widest">
+                            Home Mixology Lab • Handcrafted Cocktails
                         </p>
-                      </div>
-                    </button>
-                  </template>
+                    </div>
                 </div>
               </div>
             </div>
@@ -7307,6 +7305,18 @@
             <h3 class="text-2xl font-black text-slate-900 dark:text-white mb-2" x-text="aiLoading ? '正在構思酒譜...' : 'AI 智能調酒師'"></h3>
             <p class="text-slate-500 dark:text-slate-400 mb-8 max-w-xs mx-auto" x-text="aiLoading ? 'AI 正在掃描您的庫存，並嘗試發明一杯獨一無二的調酒。' : '我會根據您目前的庫存，為您發明一杯新調酒。'"></p>
             
+            <div class="mb-6 w-full max-w-xs mx-auto text-left" x-show="!aiLoading">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">天氣 / 氛圍</label>
+                <select x-model="aiWeather" class="w-full p-3 rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500 transition cursor-pointer">
+                    <option value="random">🎲 隨機驚喜</option>
+                    <option value="Hot Summer">☀️ 炎熱夏日 (清爽解渴)</option>
+                    <option value="Cold Winter">❄️ 寒冷冬夜 (溫暖厚實)</option>
+                    <option value="Cool Autumn">🍂 涼爽秋日 (舒適愜意)</option>
+                    <option value="Rainy Day">🌧️ 潮濕雨天 (憂鬱/放鬆)</option>
+                    <option value="Celebration">🎉 慶祝派對 (熱鬧繽紛)</option>
+                </select>
+            </div>
+
             <button @click="generateAiCocktail()" :disabled="aiLoading" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-indigo-500 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105">
                 <i data-lucide="sparkles" class="w-5 h-5"></i>
                 <span x-text="aiLoading ? '請稍候...' : '開始發明調酒'"></span>
