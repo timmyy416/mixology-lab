@@ -217,6 +217,13 @@
           menuSelectedRecipes: [],
           isMenuGenerated: false,
           currentScale: 1,
+          batchMode: false,
+          targetVolume: 2000,
+          // AI Bartender
+          geminiApiKey: localStorage.getItem('gemini_api_key') || '',
+          isAiModalOpen: false,
+          aiLoading: false,
+          aiResult: null,
 
           // 表單資料
           bottleForm: {
@@ -235,7 +242,7 @@
           },
           drinkingHistory: [],
           isJournalModalOpen: false,
-          journalForm: { recipeId: null, recipeName: '', date: '', rating: 0, notes: '' },
+          journalForm: { id: null, recipeId: null, recipeName: '', date: '', rating: 0, notes: '' },
           modifierForm: { categoryIndex: 0, name: "", desc: "", tag: "" },
           recipeForm: {
             name: "",
@@ -250,6 +257,7 @@
             steps: "",
             tips: "",
             cost: null,
+            profile: { sweet: 1, sour: 1, bitter: 1, boozy: 1, complex: 1 },
           },
           noteForm: { id: null, name: "", rating: 0, notes: "" },
 
@@ -2921,9 +2929,16 @@
             });
           },
 
-          getScaledAmount(amount) {
+          getScaledAmount(amount, id) {
             if (!amount) return "";
             if (this.currentScale === 1) return this.convertAmount(amount);
+
+            // 針對「補滿」的特殊處理 (Batch Mode)
+            if (this.batchMode && amount.includes("補滿")) {
+                const baseVol = this.parseVolume(amount, id || '');
+                const totalVol = Math.round(baseVol * this.currentScale);
+                return `${totalVol} ml`;
+            }
 
             // 自動辨識並乘算字串中的數字
             let scaled = amount.replace(/(\d+(\.\d+)?)/g, (match) => {
@@ -2937,9 +2952,37 @@
             return this.convertAmount(scaled);
           },
 
+          getRecipeTotalVolume(recipe) {
+            if (!recipe || !recipe.ingredients) return 0;
+            let total = 0;
+            recipe.ingredients.forEach(ing => {
+                total += this.parseVolume(ing.amount, ing.id);
+            });
+            return total || 150; // 若無法計算則回傳預設值避免錯誤
+          },
+
+          toggleBatchMode() {
+            this.batchMode = !this.batchMode;
+            if (this.batchMode) {
+                this.updateBatchScale();
+            } else {
+                this.currentScale = 1;
+            }
+          },
+
+          updateBatchScale() {
+            if (!this.selectedRecipe) return;
+            const total = this.getRecipeTotalVolume(this.selectedRecipe);
+            if (total > 0) {
+                this.currentScale = this.targetVolume / total;
+            }
+          },
+
           openRecipeDetail(recipe) {
             this.selectedRecipe = recipe;
             this.currentScale = 1;
+            this.batchMode = false;
+            this.targetVolume = 2000;
             this.isRecipeModalOpen = true;
           },
 
@@ -3000,6 +3043,30 @@
 
             // 乘上目前的份數倍率
             return Math.ceil(totalCost * this.currentScale);
+          },
+
+          // --- Radar Chart Helpers ---
+          getRadarPath(profile, radius = 80) {
+            const p = profile || { sweet: 0, sour: 0, bitter: 0, boozy: 0, complex: 0 };
+            const values = [p.sweet, p.sour, p.bitter, p.boozy, p.complex];
+            return values.map((v, i) => {
+                const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+                const r = (v / 5) * radius;
+                const x = 100 + r * Math.cos(angle);
+                const y = 100 + r * Math.sin(angle);
+                return `${x},${y}`;
+            }).join(" ");
+          },
+          getRadarGrid(level, radius = 80) {
+            const points = [];
+            for(let i=0; i<5; i++) {
+                const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+                const r = (level / 5) * radius;
+                const x = 100 + r * Math.cos(angle);
+                const y = 100 + r * Math.sin(angle);
+                points.push(`${x},${y}`);
+            }
+            return points.join(" ");
           },
 
           get filteredRecipes() {
@@ -3094,7 +3161,8 @@
 
           getIngredientName(id) {
             let item = this.allIngredientsList.find((i) => i.id === id);
-            return item ? item.name : "未知";
+            // Fallback to ID if not found (useful for AI generated ingredients)
+            return item ? item.name : id;
           },
 
           getMissingNames(missingIds) {
@@ -3256,6 +3324,7 @@
               steps: "",
               tips: "",
               cost: null,
+              profile: { sweet: 1, sour: 1, bitter: 1, boozy: 1, complex: 1 },
             };
             this.isRecipeFormOpen = true;
           },
@@ -3279,6 +3348,7 @@
               steps: recipe.steps.join("\n"),
               tips: recipe.tips,
               cost: recipe.cost ?? null,
+              profile: recipe.profile || { sweet: 1, sour: 1, bitter: 1, boozy: 1, complex: 1 },
             };
             this.isRecipeFormOpen = true;
           },
@@ -3306,6 +3376,26 @@
             this.$nextTick(() => lucide.createIcons());
           },
 
+          deleteNote() {
+            if (confirm("確定要刪除這筆評分與筆記嗎？")) {
+                const index = this.recipes.findIndex(
+                  (r) => r.id === this.noteForm.id
+                );
+                if (index !== -1) {
+                  // 使用物件替換以確保 computed properties (如 getAvailableRecipes) 能偵測到變更
+                  this.recipes[index] = {
+                    ...this.recipes[index],
+                    myRating: 0,
+                    myNotes: ""
+                  };
+                  this.noteForm.rating = 0;
+                  this.noteForm.notes = "";
+                }
+                this.isNoteModalOpen = false;
+                this.$nextTick(() => lucide.createIcons());
+            }
+          },
+
           saveRecipe() {
             const ingredientsArray = this.recipeForm.ingredients.map((id) => {
               return { id, amount: this.recipeForm.amounts[id] || "適量" };
@@ -3328,6 +3418,13 @@
               cost: !isNaN(parseFloat(this.recipeForm.cost))
                 ? parseFloat(this.recipeForm.cost)
                 : null,
+              profile: {
+                sweet: parseInt(this.recipeForm.profile.sweet),
+                sour: parseInt(this.recipeForm.profile.sour),
+                bitter: parseInt(this.recipeForm.profile.bitter),
+                boozy: parseInt(this.recipeForm.profile.boozy),
+                complex: parseInt(this.recipeForm.profile.complex),
+              },
             };
 
             if (this.editingRecipeId) {
@@ -3362,6 +3459,7 @@
               steps: "",
               tips: "",
               cost: null,
+              profile: { sweet: 1, sour: 1, bitter: 1, boozy: 1, complex: 1 },
             };
             this.$nextTick(() => lucide.createIcons());
           },
@@ -3652,6 +3750,7 @@
             const dateStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
             
             this.journalForm = {
+                id: null,
                 recipeId: recipe.id,
                 recipeName: recipe.name,
                 date: dateStr,
@@ -3661,14 +3760,39 @@
             this.isJournalModalOpen = true;
           },
 
+          editJournalEntry(entry) {
+            this.journalForm = {
+                id: entry.id,
+                recipeId: entry.recipeId,
+                recipeName: entry.recipeName,
+                date: entry.date,
+                rating: entry.rating,
+                notes: entry.notes || ''
+            };
+            this.isJournalModalOpen = true;
+          },
+
           saveJournalEntry() {
-            this.drinkingHistory.unshift({
-                id: Date.now(),
-                ...this.journalForm
-            });
+            if (this.journalForm.id) {
+                const index = this.drinkingHistory.findIndex(h => h.id === this.journalForm.id);
+                if (index !== -1) {
+                    this.drinkingHistory[index] = {
+                        ...this.drinkingHistory[index],
+                        date: this.journalForm.date,
+                        rating: this.journalForm.rating,
+                        notes: this.journalForm.notes
+                    };
+                    alert("日誌紀錄已更新！");
+                }
+            } else {
+                this.drinkingHistory.unshift({
+                    id: Date.now(),
+                    ...this.journalForm
+                });
+                alert("已紀錄到飲酒日誌！");
+            }
             this.isJournalModalOpen = false;
             this.saveData();
-            alert("已紀錄到飲酒日誌！");
           },
 
           deleteJournalEntry(id) {
@@ -3886,6 +4010,10 @@
               document.title = this.barName + " - " + val;
             });
             this.$watch("unit", () => this.saveData());
+
+            this.$watch("geminiApiKey", (val) => {
+              localStorage.setItem("gemini_api_key", val);
+            });
 
             lucide.createIcons();
             this.$watch("activeTab", () => {
@@ -4330,6 +4458,30 @@
             </div>
 
             <div class="grid md:grid-cols-2 gap-6">
+              <!-- AI Bartender Card -->
+              <div
+                @click="isAiModalOpen = true"
+                class="bg-gradient-to-br from-indigo-600 to-purple-700 text-white p-8 rounded-[2rem] shadow-lg border border-indigo-500 hover:scale-[1.02] cursor-pointer group transition-all relative overflow-hidden md:col-span-2"
+              >
+                <div class="absolute top-0 right-0 p-8 opacity-20 group-hover:opacity-30 transition-opacity">
+                  <i data-lucide="bot" class="w-48 h-48 text-white"></i>
+                </div>
+                <div class="relative z-10 flex flex-col h-full justify-between">
+                  <div>
+                    <div class="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mb-4 group-hover:rotate-12 transition-transform">
+                      <i data-lucide="sparkles" class="w-6 h-6 text-yellow-300"></i>
+                    </div>
+                    <h3 class="text-3xl font-black mb-2">AI 智能調酒師</h3>
+                    <p class="text-indigo-100 font-medium text-lg max-w-md">
+                      不知道喝什麼？讓 AI 根據您目前的庫存 (清冰箱模式)，為您現場發明一杯專屬特調與故事。
+                    </p>
+                  </div>
+                  <div class="mt-8 flex items-center gap-2 font-bold text-yellow-300">
+                    <span>立即體驗</span> <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                  </div>
+                </div>
+              </div>
+
               <!-- 酒譜庫 Card -->
               <div
                 @click="activeTab = 'recipes'"
@@ -6369,9 +6521,14 @@
                             <div class="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-50 dark:bg-slate-800 p-6 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
                                 <div class="flex justify-between items-start mb-2">
                                     <div class="font-black text-lg text-slate-800 dark:text-white" x-text="item.recipeName"></div>
-                                    <button @click="deleteJournalEntry(item.id)" class="text-slate-300 hover:text-red-500 transition">
-                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                    </button>
+                                    <div class="flex gap-2">
+                                        <button @click="editJournalEntry(item)" class="text-slate-300 hover:text-amber-500 transition">
+                                            <i data-lucide="pencil" class="w-4 h-4"></i>
+                                        </button>
+                                        <button @click="deleteJournalEntry(item.id)" class="text-slate-300 hover:text-red-500 transition">
+                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                        </button>
+                                    </div>
                                 </div>
                                 <div class="text-xs font-bold text-slate-400 mb-3 flex items-center gap-2">
                                     <i data-lucide="clock" class="w-3 h-3"></i>
@@ -6505,6 +6662,20 @@
                   />
                 </div>
               </div>
+            </div>
+
+            <!-- API 設定 -->
+            <div class="bg-white dark:bg-slate-900 rounded-[2rem] p-8 shadow-sm border border-slate-200 dark:border-slate-800">
+                <h3 class="text-2xl font-bold mb-6 text-slate-800 dark:text-white flex items-center gap-3">
+                    <i data-lucide="bot" class="text-amber-500"></i> AI 設定
+                </h3>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-2">Gemini API Key</label>
+                    <input type="password" x-model="geminiApiKey" placeholder="輸入您的 Google Gemini API Key" class="w-full p-3 rounded-xl border-2 border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-slate-800 dark:text-white focus:border-amber-500 outline-none transition">
+                    <p class="text-xs text-slate-400 mt-2">
+                        用於驅動 AI 智能調酒師功能。請至 <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-amber-500 hover:underline">Google AI Studio</a> 免費獲取。
+                    </p>
+                </div>
             </div>
 
             <!-- 偏好與外觀 -->
@@ -6874,6 +7045,83 @@
       </div>
     </div>
 
+    <!-- --- 彈窗：AI 調酒師 --- -->
+    <div
+      x-show="isAiModalOpen"
+      class="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[100] p-4 animate-fade-in"
+      x-cloak
+    >
+      <div class="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col relative border border-slate-200 dark:border-slate-700">
+        <button @click="isAiModalOpen = false" class="absolute top-6 right-6 z-10 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+
+        <!-- 初始狀態 / Loading -->
+        <div x-show="!aiResult" class="p-10 flex flex-col items-center justify-center text-center h-full min-h-[400px]">
+            <div class="w-24 h-24 bg-indigo-100 dark:bg-indigo-900/30 rounded-full flex items-center justify-center mb-6 relative">
+                <i data-lucide="bot" class="w-12 h-12 text-indigo-600 dark:text-indigo-400" :class="aiLoading ? 'animate-bounce' : ''"></i>
+                <div x-show="aiLoading" class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+            
+            <h3 class="text-2xl font-black text-slate-900 dark:text-white mb-2" x-text="aiLoading ? '正在構思酒譜...' : 'AI 智能調酒師'"></h3>
+            <p class="text-slate-500 dark:text-slate-400 mb-8 max-w-xs mx-auto" x-text="aiLoading ? 'AI 正在掃描您的庫存，並嘗試發明一杯獨一無二的調酒。' : '我會根據您目前的庫存，為您發明一杯新調酒。'"></p>
+            
+            <button @click="generateAiCocktail()" :disabled="aiLoading" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black shadow-xl hover:bg-indigo-500 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105">
+                <i data-lucide="sparkles" class="w-5 h-5"></i>
+                <span x-text="aiLoading ? '請稍候...' : '開始發明調酒'"></span>
+            </button>
+        </div>
+
+        <!-- 結果顯示 -->
+        <div x-show="aiResult" class="flex flex-col h-full">
+            <div class="p-8 overflow-y-auto custom-scrollbar flex-1">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="p-3 bg-indigo-100 text-indigo-600 rounded-2xl">
+                        <i data-lucide="sparkles" class="w-8 h-8"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-black text-indigo-400 uppercase tracking-widest">AI Generated</div>
+                        <h3 class="text-3xl font-black text-slate-900 dark:text-white" x-text="aiResult?.name"></h3>
+                    </div>
+                </div>
+
+                <p class="text-lg font-bold text-indigo-600 dark:text-indigo-400 mb-2" x-text="aiResult?.flavor"></p>
+                <p class="text-sm text-slate-600 dark:text-slate-300 italic mb-6 bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700" x-text="aiResult?.features"></p>
+
+                <!-- Radar Chart for AI Result -->
+                <div class="mb-6 flex justify-center" x-show="aiResult?.profile">
+                    <div class="relative w-48 h-48">
+                        <svg viewBox="0 0 200 200" class="w-full h-full">
+                            <g class="text-slate-200 dark:text-slate-700 stroke-current stroke-1 fill-none">
+                                <polygon :points="getRadarGrid(5)" /><polygon :points="getRadarGrid(3)" /><polygon :points="getRadarGrid(1)" />
+                            </g>
+                            <polygon :points="getRadarPath(aiResult?.profile)" class="fill-indigo-500/50 stroke-indigo-500 stroke-2" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="space-y-4 mb-6">
+                    <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest">材料</h4>
+                    <ul class="space-y-2">
+                        <template x-for="ing in aiResult?.ingredients">
+                            <li class="flex justify-between text-sm font-bold text-slate-700 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2">
+                                <span x-text="ing.name"></span>
+                                <span x-text="ing.amount" class="text-slate-500"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+            </div>
+            <div class="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex gap-4 shrink-0">
+                <button @click="generateAiCocktail()" class="flex-1 py-3 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition">不滿意，重來</button>
+                <button @click="saveAiRecipe()" class="flex-[2] py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg hover:bg-indigo-500 transition flex items-center justify-center gap-2">
+                    <i data-lucide="save" class="w-4 h-4"></i> 收藏這份酒譜
+                </button>
+            </div>
+        </div>
+      </div>
+    </div>
+
     <!-- --- 表單彈窗：新增調味 --- -->
     <div
       x-show="isModifierFormOpen"
@@ -7071,6 +7319,39 @@
                 class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
                 x-model="recipeForm.tags"
               />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6">
+            <div class="col-span-2">
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">風味輪廓 (1-5分)</label>
+                <div class="grid grid-cols-1 sm:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-2xl border-2 border-slate-100">
+                    <div class="text-center">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">甜度</label>
+                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.sweet" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-pink-500">
+                        <div class="text-xs font-black text-pink-500 mt-1" x-text="recipeForm.profile.sweet"></div>
+                    </div>
+                    <div class="text-center">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">酸度</label>
+                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.sour" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-yellow-500">
+                        <div class="text-xs font-black text-yellow-500 mt-1" x-text="recipeForm.profile.sour"></div>
+                    </div>
+                    <div class="text-center">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">苦度</label>
+                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.bitter" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-green-700">
+                        <div class="text-xs font-black text-green-700 mt-1" x-text="recipeForm.profile.bitter"></div>
+                    </div>
+                    <div class="text-center">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">酒精感</label>
+                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.boozy" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-red-600">
+                        <div class="text-xs font-black text-red-600 mt-1" x-text="recipeForm.profile.boozy"></div>
+                    </div>
+                    <div class="text-center">
+                        <label class="block text-xs font-bold text-slate-600 mb-1">複雜度</label>
+                        <input type="range" min="1" max="5" step="1" x-model="recipeForm.profile.complex" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-purple-600">
+                        <div class="text-xs font-black text-purple-600 mt-1" x-text="recipeForm.profile.complex"></div>
+                    </div>
+                </div>
             </div>
           </div>
 
@@ -7311,6 +7592,41 @@
             </div>
           </div>
 
+          <!-- Flavor Profile Radar Chart -->
+          <div class="mb-8 flex flex-col items-center" x-show="selectedRecipe.profile">
+            <div class="relative w-64 h-64">
+                <svg viewBox="0 0 200 200" class="w-full h-full drop-shadow-xl">
+                    <!-- Background Grid -->
+                    <g class="text-slate-200 dark:text-slate-700 stroke-current stroke-1 fill-none">
+                        <polygon :points="getRadarGrid(5)" />
+                        <polygon :points="getRadarGrid(4)" />
+                        <polygon :points="getRadarGrid(3)" />
+                        <polygon :points="getRadarGrid(2)" />
+                        <polygon :points="getRadarGrid(1)" />
+                    </g>
+                    <!-- Axes -->
+                    <g class="text-slate-200 dark:text-slate-700 stroke-current stroke-1">
+                        <line x1="100" y1="100" x2="100" y2="20" />
+                        <line x1="100" y1="100" x2="176" y2="75" />
+                        <line x1="100" y1="100" x2="147" y2="165" />
+                        <line x1="100" y1="100" x2="53" y2="165" />
+                        <line x1="100" y1="100" x2="24" y2="75" />
+                    </g>
+                    <!-- Data Polygon -->
+                    <polygon :points="getRadarPath(selectedRecipe.profile)" class="fill-amber-500/50 stroke-amber-500 stroke-2" />
+                    <!-- Labels -->
+                    <g class="text-[10px] font-black fill-slate-500 dark:fill-slate-400 text-center" style="text-anchor: middle; dominant-baseline: middle;">
+                        <text x="100" y="10">甜度</text>
+                        <text x="190" y="75">酸度</text>
+                        <text x="160" y="180">苦度</text>
+                        <text x="40" y="180">酒精感</text>
+                        <text x="10" y="75">複雜度</text>
+                    </g>
+                </svg>
+            </div>
+            <p class="text-xs text-slate-400 font-bold mt-2">風味輪廓分析</p>
+          </div>
+
           <p
             class="text-lg font-bold text-slate-700 dark:text-slate-300 mb-2"
             x-text="selectedRecipe.flavor"
@@ -7321,36 +7637,60 @@
           ></p>
 
           <div class="mb-8">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h4
                 class="text-[10px] font-black text-slate-400 uppercase tracking-widest"
               >
                 材料清單
               </h4>
-              <div class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
-                <button
-                  @click="currentScale = 1"
-                  :class="currentScale === 1 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
-                  class="px-3 py-1 rounded-md text-xs font-bold transition"
+              <div class="flex items-center gap-2">
+                <button 
+                    @click="toggleBatchMode()"
+                    class="text-xs font-bold px-3 py-1.5 rounded-lg border transition flex items-center gap-1"
+                    :class="batchMode ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800' : 'bg-slate-100 text-slate-500 border-transparent dark:bg-slate-800 dark:text-slate-400'"
+                    title="派對總量計算機"
                 >
-                  x1
+                    <i data-lucide="calculator" class="w-3 h-3"></i>
+                    <span x-show="batchMode">派對模式</span>
                 </button>
-                <button
-                  @click="currentScale = 2"
-                  :class="currentScale === 2 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
-                  class="px-3 py-1 rounded-md text-xs font-bold transition"
-                >
-                  x2
-                </button>
-                <button
-                  @click="currentScale = 4"
-                  :class="currentScale === 4 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
-                  class="px-3 py-1 rounded-md text-xs font-bold transition"
-                >
-                  x4
-                </button>
+                <div x-show="!batchMode" class="flex bg-slate-100 dark:bg-slate-800 rounded-lg p-1">
+                    <button
+                    @click="currentScale = 1"
+                    :class="currentScale === 1 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
+                    class="px-3 py-1 rounded-md text-xs font-bold transition"
+                    >
+                    x1
+                    </button>
+                    <button
+                    @click="currentScale = 2"
+                    :class="currentScale === 2 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
+                    class="px-3 py-1 rounded-md text-xs font-bold transition"
+                    >
+                    x2
+                    </button>
+                    <button
+                    @click="currentScale = 4"
+                    :class="currentScale === 4 ? 'bg-white dark:bg-slate-700 shadow text-amber-600' : 'text-slate-400'"
+                    class="px-3 py-1 rounded-md text-xs font-bold transition"
+                    >
+                    x4
+                    </button>
+                </div>
               </div>
             </div>
+            
+            <!-- Batch Calculator Input -->
+            <div x-show="batchMode" class="mb-4 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-xl border border-amber-100 dark:border-amber-900/30 flex items-center gap-4 animate-fade-in">
+                <div class="flex-1">
+                    <label class="text-[10px] font-black text-amber-600/70 dark:text-amber-400/70 uppercase tracking-widest block mb-1">預計總量 (ml)</label>
+                    <input type="number" x-model="targetVolume" @input="updateBatchScale()" class="w-full bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 text-sm font-bold text-amber-700 dark:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div class="text-right">
+                    <div class="text-[10px] font-black text-amber-600/70 dark:text-amber-400/70 uppercase tracking-widest mb-1">放大倍率</div>
+                    <div class="text-xl font-black text-amber-600 dark:text-amber-400" x-text="'x' + currentScale.toFixed(1)"></div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-2 gap-3">
               <template x-for="ing in selectedRecipe.ingredients">
                 <div
@@ -7363,7 +7703,7 @@
                   ></span>
                   <span
                     class="text-xs font-mono text-slate-500"
-                    x-text="getScaledAmount(ing.amount)"
+                    x-text="getScaledAmount(ing.amount, ing.id)"
                   ></span>
                 </div>
               </template>
@@ -7466,7 +7806,7 @@
               <template x-for="i in 5">
                 <button
                   type="button"
-                  @click="noteForm.rating = i"
+                  @click="noteForm.rating = (noteForm.rating === i ? 0 : i)"
                   class="transition hover:scale-110 focus:outline-none"
                 >
                   <i
@@ -7497,12 +7837,23 @@
             ></textarea>
           </div>
 
-          <button
-            type="submit"
-            class="w-full py-4 bg-amber-500 text-slate-900 font-black rounded-2xl shadow-lg hover:bg-amber-400 transition flex items-center justify-center gap-2"
-          >
-            <i data-lucide="save" class="w-5 h-5"></i> 儲存筆記
-          </button>
+          <div class="flex gap-4">
+            <button
+              type="button"
+              @click="deleteNote()"
+              x-show="noteForm.rating > 0 || noteForm.notes"
+              class="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-black rounded-2xl hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition flex items-center justify-center gap-2"
+            >
+              <i data-lucide="trash-2" class="w-5 h-5"></i> 刪除
+            </button>
+            <button
+              type="submit"
+              class="py-4 bg-amber-500 text-slate-900 font-black rounded-2xl shadow-lg hover:bg-amber-400 transition flex items-center justify-center gap-2"
+              :class="(noteForm.rating > 0 || noteForm.notes) ? 'flex-[2]' : 'w-full'"
+            >
+              <i data-lucide="save" class="w-5 h-5"></i> 儲存筆記
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -7522,7 +7873,7 @@
           <h3
             class="font-black text-2xl flex items-center gap-3 text-slate-900 dark:text-white"
           >
-            <i data-lucide="calendar-plus" class="text-green-500"></i> 紀錄一杯
+            <i data-lucide="calendar-plus" class="text-green-500"></i> <span x-text="journalForm.id ? '編輯紀錄' : '紀錄一杯'"></span>
           </h3>
           <button
             @click="isJournalModalOpen = false"
@@ -7546,7 +7897,7 @@
             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">本次評分</label>
             <div class="flex gap-2">
                <template x-for="i in 5">
-                <button type="button" @click="journalForm.rating = i" class="focus:outline-none transition hover:scale-110">
+                <button type="button" @click="journalForm.rating = (journalForm.rating === i ? 0 : i)" class="focus:outline-none transition hover:scale-110">
                   <i data-lucide="star" class="w-8 h-8" :class="i <= journalForm.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200 dark:text-slate-700'"></i>
                 </button>
                </template>
@@ -7559,7 +7910,7 @@
           </div>
 
           <button type="submit" class="w-full py-4 bg-green-500 text-white font-black rounded-2xl shadow-lg hover:bg-green-400 transition flex items-center justify-center gap-2">
-            <i data-lucide="check" class="w-5 h-5"></i> 儲存紀錄
+            <i data-lucide="check" class="w-5 h-5"></i> <span x-text="journalForm.id ? '更新紀錄' : '儲存紀錄'"></span>
           </button>
         </form>
       </div>
