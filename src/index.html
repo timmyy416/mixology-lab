@@ -218,6 +218,7 @@
           filterDifficulty: "all",
           filterStyle: "all",
           filterBottleType: "all",
+          filterBottleStatus: "all",
           sortBottleBy: "date_desc",
           // Firebase User State
           user: null,
@@ -272,6 +273,7 @@
             price: "",
             location: "",
             purchaseDate: "",
+            openedDate: null,
             rating: 5,
             notes: "",
             tags: "",
@@ -1276,14 +1278,16 @@
                 {
                   id: "vermouth_dry",
                   name: "不甜香艾酒",
-                  desc: "白葡萄酒基底，馬丁尼專用。",
+                  desc: "加烈葡萄酒，馬丁尼專用。開封後需冷藏。",
                   tag: "草本",
+                  shelfLife: 30, // 開封後建議賞味期 (天)
                 },
                 {
                   id: "vermouth_sweet",
                   name: "甜香艾酒",
-                  desc: "紅葡萄酒基底，色澤深紅。",
+                  desc: "加烈葡萄酒，色澤深紅。開封後需冷藏。",
                   tag: "甜",
+                  shelfLife: 30, // 開封後建議賞味期 (天)
                 },
                 {
                   id: "kahlua",
@@ -1324,8 +1328,9 @@
                 {
                   id: "lillet_blanc",
                   name: "麗葉酒",
-                  desc: "法國開胃酒。",
+                  desc: "法國開胃酒，以葡萄酒為基底。開封後需冷藏。",
                   tag: "花果",
+                  shelfLife: 21, // 開封後建議賞味期 (天)
                 },
                 {
                   id: "absinthe",
@@ -2859,6 +2864,10 @@
             return list;
           },
 
+          get availableBottleTypes() {
+            return this.allIngredientsList;
+          },
+
           getGroupedIngredients() {
             let groups = {};
             this.allIngredientsList.forEach((ing) => {
@@ -3199,16 +3208,50 @@
           },
 
           get filteredBottles() {
-            if (!this.searchQuery) return this.myBottles;
-            const lowerQuery = this.searchQuery.toLowerCase();
-            return this.myBottles.filter(
-              (b) =>
-                b.name.toLowerCase().includes(lowerQuery) ||
-                (b.brand && b.brand.toLowerCase().includes(lowerQuery)) ||
-                this.getIngredientName(b.typeId)
-                  .toLowerCase()
-                  .includes(lowerQuery)
-            );
+            let result = this.myBottles;
+
+            // 1. Search
+            if (this.searchQuery) {
+              const lowerQuery = this.searchQuery.toLowerCase();
+              result = result.filter(
+                (b) =>
+                  b.name.toLowerCase().includes(lowerQuery) ||
+                  (b.brand && b.brand.toLowerCase().includes(lowerQuery)) ||
+                  this.getIngredientName(b.typeId).toLowerCase().includes(lowerQuery) ||
+                  (b.tags && b.tags.some(t => t.toLowerCase().includes(lowerQuery)))
+              );
+            }
+
+            // 2. Type Filter
+            if (this.filterBottleType !== 'all') {
+                result = result.filter(b => b.typeId === this.filterBottleType);
+            }
+
+            // 3. Status Filter
+            if (this.filterBottleStatus !== 'all') {
+                result = result.filter(b => {
+                    const status = this.getBottleStatus(b);
+                    if (!status) return false;
+                    if (this.filterBottleStatus === 'expiring') return status.status === 'nearing';
+                    if (this.filterBottleStatus === 'expired') return status.status === 'expired';
+                    if (this.filterBottleStatus === 'unopened') return status.status === 'unopened';
+                    return true;
+                });
+            }
+
+            // 4. Sort
+            result = result.sort((a, b) => {
+                switch(this.sortBottleBy) {
+                    case 'date_desc': return new Date(b.purchaseDate || 0) - new Date(a.purchaseDate || 0);
+                    case 'date_asc': return new Date(a.purchaseDate || 0) - new Date(b.purchaseDate || 0);
+                    case 'price_desc': return (parseFloat(b.price) || 0) - (parseFloat(a.price) || 0);
+                    case 'price_asc': return (parseFloat(a.price) || 0) - (parseFloat(b.price) || 0);
+                    case 'rating_desc': return (b.rating || 0) - (a.rating || 0);
+                    default: return 0;
+                }
+            });
+
+            return result;
           },
 
           getAvailableRecipes() {
@@ -3263,6 +3306,60 @@
               .join(", ");
           },
 
+          getBottleStatus(bottle) {
+            const ingredientInfo = this.modifiers.flatMap(m => m.items).find(i => i.id === bottle.typeId);
+            const shelfLifeDays = ingredientInfo?.shelfLife;
+
+            if (!bottle.openedDate) {
+                if (shelfLifeDays) {
+                    return { status: 'unopened', text: '未開封', icon: 'package', color: 'text-slate-400' };
+                }
+                return null; // 如果沒有定義賞味期，未開封時不顯示任何狀態
+            }
+
+            if (!shelfLifeDays) {
+                return { status: 'opened', text: '已開封', icon: 'package-open', color: 'text-slate-500' };
+            }
+
+            const opened = new Date(bottle.openedDate);
+            const expiryDate = new Date(opened.getTime() + shelfLifeDays * 24 * 60 * 60 * 1000);
+            const today = new Date();
+            const daysRemaining = Math.ceil((expiryDate - today) / (24 * 60 * 60 * 1000));
+
+            if (daysRemaining <= 0) {
+                return { status: 'expired', text: `建議賞味期已過`, icon: 'skull', color: 'text-red-500' };
+            }
+            if (daysRemaining <= 7) {
+                return { status: 'nearing', text: `賞味期剩 ${daysRemaining} 天`, icon: 'alert-triangle', color: 'text-amber-500' };
+            }
+
+            return { status: 'fresh', text: '賞味期內', icon: 'check-circle', color: 'text-green-500' };
+          },
+
+          getBottleExpiryDate(bottle) {
+            const ingredientInfo = this.modifiers.flatMap(m => m.items).find(i => i.id === bottle.typeId);
+            const shelfLifeDays = ingredientInfo?.shelfLife;
+            if (!bottle.openedDate || !shelfLifeDays) return null;
+            
+            const opened = new Date(bottle.openedDate);
+            const expiryDate = new Date(opened.getTime() + shelfLifeDays * 24 * 60 * 60 * 1000);
+            return expiryDate.toISOString().slice(0, 10);
+          },
+
+          quickConsume(bottle, amount) {
+            const totalVol = parseInt(bottle.volume) || 750;
+            const currentVol = (bottle.remaining / 100) * totalVol;
+            let newVol = currentVol - amount;
+            if (newVol < 0) newVol = 0;
+            
+            bottle.remaining = Math.round((newVol / totalVol) * 100);
+            
+            if (!bottle.openedDate) {
+                 const now = new Date();
+                 bottle.openedDate = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().slice(0, 10);
+            }
+          },
+
           convertStep(step) {
             if (this.unit === "ml") return step;
             return step.replace(/(\d+)\s*ml/gi, (match, p1) => {
@@ -3299,6 +3396,7 @@
               price: "",
               location: "",
               purchaseDate: "",
+              openedDate: null,
               rating: 5,
               notes: "",
               tags: "",
@@ -3319,6 +3417,7 @@
               price: bottle.price || "",
               location: bottle.location || "",
               purchaseDate: bottle.purchaseDate || "",
+              openedDate: bottle.openedDate || null,
               rating: bottle.rating ?? 5,
               notes: bottle.notes || "",
               tags: (bottle.tags || []).join(", "),
@@ -4915,6 +5014,30 @@
                   </span>
                 </div>
               </a>
+
+              <!-- AI Studio App Card -->
+              <a
+                href="https://ai.studio/apps/drive/1IaHNHh_SJHH9xY3mfWwqdlG9u3ayOBoE?fullscreenApplet=true"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="md:col-span-2 bg-white dark:bg-slate-900 p-8 rounded-[2rem] shadow-sm border border-slate-200 dark:border-slate-800 hover:border-pink-400 dark:hover:border-pink-400 cursor-pointer group transition-all hover:shadow-xl relative overflow-hidden"
+              >
+                <div class="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <i data-lucide="zap" class="w-32 h-32 text-pink-500"></i>
+                </div>
+                <div class="relative z-10">
+                  <div class="w-12 h-12 bg-pink-100 dark:bg-pink-900/30 text-pink-500 dark:text-pink-400 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <i data-lucide="zap" class="w-6 h-6"></i>
+                  </div>
+                  <h3 class="text-2xl font-black text-slate-900 dark:text-white mb-2">AI Studio 應用程式</h3>
+                  <p class="text-slate-500 dark:text-slate-400 font-medium mb-4">
+                    點擊前往 AI Studio 體驗更多功能。
+                  </p>
+                  <span class="text-pink-500 dark:text-pink-400 font-bold flex items-center gap-2 group-hover:gap-4 transition-all">
+                    開啟外部連結 <i data-lucide="external-link" class="w-4 h-4"></i>
+                  </span>
+                </div>
+              </a>
             </div>
           </div>
 
@@ -6361,6 +6484,13 @@
                     <option :value="type.id" x-text="type.name"></option>
                 </template>
               </select>
+
+              <select x-model="filterBottleStatus" class="bg-slate-50 dark:bg-slate-800 border-none text-sm font-bold rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-slate-700 dark:text-slate-200 w-full md:w-auto">
+                <option value="all">所有狀態</option>
+                <option value="expiring">⚠️ 即將到期 (7天內)</option>
+                <option value="expired">💀 已過期</option>
+                <option value="unopened">📦 未開封</option>
+              </select>
               
               <select x-model="sortBottleBy" class="bg-slate-50 dark:bg-slate-800 border-none text-sm font-bold rounded-lg py-2 pl-3 pr-8 focus:ring-2 focus:ring-amber-500 outline-none cursor-pointer text-slate-700 dark:text-slate-200 w-full md:w-auto">
                 <option value="date_desc">最新購入</option>
@@ -6370,7 +6500,7 @@
                 <option value="rating_desc">評分 (高→低)</option>
               </select>
 
-               <button x-show="filterBottleType !== 'all' || sortBottleBy !== 'date_desc'" @click="filterBottleType = 'all'; sortBottleBy = 'date_desc'" class="text-xs font-bold text-red-500 hover:text-red-600 flex items-center gap-1 w-full md:w-auto justify-center md:justify-start md:ml-auto">
+               <button x-show="filterBottleType !== 'all' || filterBottleStatus !== 'all' || sortBottleBy !== 'date_desc'" @click="filterBottleType = 'all'; filterBottleStatus = 'all'; sortBottleBy = 'date_desc'" class="text-xs font-bold text-red-500 hover:text-red-600 flex items-center gap-1 w-full md:w-auto justify-center md:justify-start md:ml-auto">
                 <i data-lucide="x-circle" class="w-3 h-3"></i>
                 重置
               </button>
@@ -6414,20 +6544,35 @@
                         x-text="bottle.brand"
                       ></p>
                     </div>
-                    <div
-                      class="text-lg font-black text-amber-600"
-                      x-text="'$' + bottle.price"
-                    ></div>
+                  <div class="text-lg font-black text-amber-600" x-text="bottle.price ? '$' + bottle.price : ''"></div>
                   </div>
                   <div class="p-6 flex-1 space-y-4">
+                  <div x-show="getBottleStatus(bottle)" class="p-3 rounded-xl" :class="getBottleStatus(bottle)?.color.replace('text-', 'bg-').replace('-500', '-100')">
+                      <div class="flex items-center gap-2 text-xs font-bold" :class="bottle.openedDate ? 'mb-2' : ''">
+                          <i :data-lucide="getBottleStatus(bottle)?.icon" class="w-4 h-4 shrink-0" :class="getBottleStatus(bottle)?.color"></i>
+                          <span :class="getBottleStatus(bottle)?.color" x-text="getBottleStatus(bottle)?.text"></span>
+                      </div>
+                      <div x-show="bottle.openedDate" class="text-[10px] space-y-1 pl-6 border-t border-slate-200/50 pt-2">
+                          <div class="flex justify-between text-slate-500 dark:text-slate-400">
+                              <span>開封:</span>
+                              <span class="font-mono font-bold" x-text="bottle.openedDate"></span>
+                          </div>
+                          <div x-show="getBottleExpiryDate(bottle)" class="flex justify-between font-bold" :class="getBottleStatus(bottle)?.status === 'expired' ? 'text-red-600' : (getBottleStatus(bottle)?.status === 'nearing' ? 'text-amber-700' : 'text-slate-500 dark:text-slate-400')">
+                              <span>期限:</span>
+                              <span class="font-mono" x-text="getBottleExpiryDate(bottle)"></span>
+                          </div>
+                      </div>
+                  </div>
+
                     <div
                       class="flex flex-wrap gap-1"
                       x-show="bottle.tags && bottle.tags.length"
                     >
                       <template x-for="tag in bottle.tags">
                         <span
-                          class="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-1 rounded-lg font-bold"
+                        class="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-1 rounded-lg font-bold cursor-pointer"
                           x-text="'#'+tag"
+                        @click.stop="searchQuery = tag"
                         ></span>
                       </template>
                     </div>
@@ -6477,11 +6622,19 @@
                         type="range"
                         min="0"
                         max="100"
-                        step="10"
+                        step="1"
                         class="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
                         x-model="bottle.remaining"
                         title="調整剩餘量"
                       />
+                      <div class="flex justify-end gap-2 mt-2">
+                          <button @click.stop="quickConsume(bottle, 30)" class="text-[10px] px-2 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-400 font-bold transition flex items-center gap-1" title="快速飲用 30ml">
+                              <i data-lucide="glass-water" class="w-3 h-3"></i> -30ml
+                          </button>
+                          <button @click.stop="quickConsume(bottle, 45)" class="text-[10px] px-2 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-slate-500 dark:text-slate-400 font-bold transition flex items-center gap-1" title="快速飲用 45ml">
+                              <i data-lucide="glass-water" class="w-3 h-3"></i> -45ml
+                          </button>
+                      </div>
                     </div>
 
                     <div
@@ -7343,6 +7496,21 @@
                 class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
                 x-model="bottleForm.purchaseDate"
               />
+            </div>
+            <div>
+              <label
+                class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+                >開封日期</label
+              >
+              <div class="flex gap-2">
+                <input
+                  type="date"
+                  class="w-full p-3 rounded-2xl border-2 border-slate-100 font-bold text-sm bg-slate-50"
+                  x-model="bottleForm.openedDate"
+                />
+                <button type="button" @click="bottleForm.openedDate = new Date().toISOString().slice(0,10)" class="px-4 bg-slate-100 hover:bg-slate-200 rounded-2xl text-xs font-bold text-slate-500">今天</button>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">針對香艾酒、麗葉酒等加烈葡萄酒，設定開封日期以追蹤賞味期限。</p>
             </div>
           </div>
           <div class="grid grid-cols-2 gap-6">
